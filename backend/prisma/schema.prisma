@@ -1,0 +1,422 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id              String           @id @default(uuid())
+  name            String
+  email           String           @unique
+  passwordHash    String
+  role            String
+  dealerCode      String
+  dealerName      String           @default("")
+  failedAttempts  Int              @default(0)
+  lockedUntil     DateTime?
+  isActive        Boolean          @default(true)
+  lastLoginAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  refreshSessions RefreshSession[]
+  workItems       WorkItem[]
+  audits          AuditLog[]
+  purchaseInvoices PurchaseInvoice[]
+  pdiRecords      PDIRecord[]
+  installations   InstallationCertificate[]
+  deliveries      DeliverySheet[]
+  accountsDeals   AccountsDeal[]
+  atsSheets       ATSRecord[]
+  serviceRequests ServiceRequest[]
+}
+
+model RefreshSession {
+  id         String    @id @default(uuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id])
+  tokenHash  String    @unique
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+model Customer {
+  id                  String                     @id @default(uuid())
+  name                String
+  fatherName          String?
+  registeredOwnerName String?
+  mobile              String
+  secondaryMobile     String?
+  email               String?
+  address             String
+  district            String?
+  state               String?
+  pincode             String?
+  panNumber           String?
+  aadhaar             String?
+  otpVerified         Boolean                    @default(false)
+  vehicles            Vehicle[]
+  workItems           WorkItem[]
+  installations       InstallationCertificate[]
+  deliveries          DeliverySheet[]
+  rtoRecords          RTORecord[]
+  accountsDeals       AccountsDeal[]
+  serviceRequests     ServiceRequest[]
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+}
+
+model Vehicle {
+  id                 String                     @id @default(uuid())
+  code               String                     @unique
+  engineNo           String                     @unique
+  chassisNo          String                     @unique
+  registrationNo     String?
+  model              String
+  variant            String?
+  manufactureDate    DateTime?
+  status             String
+  customerId         String?
+  customer           Customer?                  @relation(fields: [customerId], references: [id])
+  purchaseInvoiceId  String?
+  purchaseInvoice    PurchaseInvoice?           @relation(fields: [purchaseInvoiceId], references: [id])
+  workItems          WorkItem[]
+  pdiRecord          PDIRecord?
+  installation       InstallationCertificate?
+  deliverySheet      DeliverySheet?
+  safetyRecord       SafetyAcknowledgement?
+  insuranceRecords   InsuranceRecord[]
+  rtoRecord          RTORecord?
+  accountsDeal       AccountsDeal?
+  atsSheet           ATSRecord?
+  serviceRequests    ServiceRequest[]
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+}
+
+model DmsModule {
+  id            String     @id @default(uuid())
+  key           String     @unique
+  title         String
+  subtitle      String
+  route         String
+  icon          String
+  prs           String
+  primaryAction String
+  statusAfter   String
+  fields        String
+  workflow      String
+  checklist     String
+  workItems     WorkItem[]
+}
+
+model WorkItem {
+  id                String              @id @default(uuid())
+  ref               String              @unique
+  moduleKey         String
+  module            DmsModule           @relation(fields: [moduleKey], references: [key])
+  customerId        String?
+  customer          Customer?           @relation(fields: [customerId], references: [id])
+  vehicleId         String?
+  vehicle           Vehicle?            @relation(fields: [vehicleId], references: [id])
+  ownerId           String?
+  owner             User?               @relation(fields: [ownerId], references: [id])
+  purchaseInvoiceId String?
+  pdiRecordId       String?
+  installationId    String?
+  deliverySheetId   String?
+  safetyRecordId    String?
+  insuranceRecordId String?
+  rtoRecordId       String?
+  accountsDealId    String?
+  atsRecordId       String?
+  serviceRequestId  String?
+  exchangeRecordId  String?
+  status            String
+  due               String
+  amount            Int?
+  payload           String?
+  documents         DocumentRecord[]
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+}
+
+model DocumentRecord {
+  id         String   @id @default(uuid())
+  workItemId String
+  workItem   WorkItem @relation(fields: [workItemId], references: [id])
+  name       String
+  status     String
+  fileName   String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model PurchaseInvoice {
+  id                      String    @id @default(uuid())
+  invoiceNumber           String    @unique
+  invoiceDate             DateTime
+  eWayBillNumber          String    @unique
+  eWayBillDate            DateTime
+  vehicleCount            Int
+  totalValue              Int
+  consignmentDetails      String?
+  consignerName           String
+  consignerInvoiceNumber  String?
+  logisticsReceiptFile    String?
+  status                  String
+  createdById             String?
+  createdBy               User?     @relation(fields: [createdById], references: [id])
+  vehicles                Vehicle[]
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+}
+
+model PdiChecklistDefinition {
+  id         String             @id @default(uuid())
+  code       String             @unique
+  section    String
+  label      String
+  mandatory  Boolean            @default(true)
+  sortOrder  Int
+  results    PdiChecklistResult[]
+}
+
+model PDIRecord {
+  id                String               @id @default(uuid())
+  vehicleId         String               @unique
+  vehicle           Vehicle              @relation(fields: [vehicleId], references: [id])
+  inspectorId       String?
+  inspector         User?                @relation(fields: [inspectorId], references: [id])
+  status            String
+  remarks           String?
+  signatoryPhoto    String?
+  otpVerified       Boolean              @default(false)
+  completedAt       DateTime?
+  results           PdiChecklistResult[]
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+}
+
+model PdiChecklistResult {
+  id           String                 @id @default(uuid())
+  pdiRecordId  String
+  pdiRecord    PDIRecord              @relation(fields: [pdiRecordId], references: [id])
+  checklistId  String
+  checklist    PdiChecklistDefinition @relation(fields: [checklistId], references: [id])
+  result       String
+  remarks      String?
+}
+
+model InstallationCertificate {
+  id              String    @id @default(uuid())
+  certificateNo   String    @unique
+  vehicleId       String    @unique
+  vehicle         Vehicle   @relation(fields: [vehicleId], references: [id])
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  ownerId         String?
+  owner           User?     @relation(fields: [ownerId], references: [id])
+  otpVerified     Boolean   @default(false)
+  signatureData   String?
+  handoverPhoto   String?
+  generatedPdf    String?
+  status          String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model DeliverySheet {
+  id                        String    @id @default(uuid())
+  sheetNo                   String    @unique
+  vehicleId                 String    @unique
+  vehicle                   Vehicle   @relation(fields: [vehicleId], references: [id])
+  customerId                String
+  customer                  Customer  @relation(fields: [customerId], references: [id])
+  installationCertificateId String?
+  ownerId                   String?
+  owner                     User?     @relation(fields: [ownerId], references: [id])
+  deliveryDate              DateTime
+  deliveredItemsJson        String
+  uploadsJson               String
+  agreementAccepted         Boolean   @default(false)
+  signatureData             String?
+  receiptPdf                String?
+  status                    String
+  createdAt                 DateTime  @default(now())
+  updatedAt                 DateTime  @updatedAt
+}
+
+model SafetyAcknowledgement {
+  id             String    @id @default(uuid())
+  vehicleId      String    @unique
+  vehicle        Vehicle   @relation(fields: [vehicleId], references: [id])
+  language       String?
+  topicsJson     String
+  otpVerified    Boolean   @default(false)
+  acknowledgedAt DateTime?
+  status         String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model InsuranceRecord {
+  id            String    @id @default(uuid())
+  policyNumber  String    @unique
+  vehicleId     String
+  vehicle       Vehicle   @relation(fields: [vehicleId], references: [id])
+  provider      String
+  premiumAmount Int
+  startDate     DateTime
+  endDate       DateTime
+  nominee       String?
+  coverageType  String
+  fileName      String?
+  status        String
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model RTORecord {
+  id                 String        @id @default(uuid())
+  packetNo           String        @unique
+  vehicleId          String        @unique
+  vehicle            Vehicle       @relation(fields: [vehicleId], references: [id])
+  customerId         String
+  customer           Customer      @relation(fields: [customerId], references: [id])
+  registrationNumber String?
+  remarks            String?
+  submissionDeadline DateTime?
+  status             String
+  documents          RTODocument[]
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
+}
+
+model RTODocument {
+  id             String    @id @default(uuid())
+  rtoRecordId    String
+  rtoRecord      RTORecord @relation(fields: [rtoRecordId], references: [id])
+  name           String
+  documentNumber String?
+  status         String
+  fileName       String?
+  remarks        String?
+  expiryDate     DateTime?
+}
+
+model AccountsDeal {
+  id               String    @id @default(uuid())
+  dealNo           String    @unique
+  vehicleId        String    @unique
+  vehicle          Vehicle   @relation(fields: [vehicleId], references: [id])
+  customerId       String
+  customer         Customer  @relation(fields: [customerId], references: [id])
+  ownerId          String?
+  owner            User?     @relation(fields: [ownerId], references: [id])
+  bookingAmount    Int?
+  loanDisbursal    Int?
+  cashReceipt      Int?
+  discountApproval Int?
+  finalBalance     Int?
+  closureDate      DateTime?
+  status           String
+  receiptsJson     String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  atsSheet         ATSRecord?
+}
+
+model ATSRecord {
+  id             String    @id @default(uuid())
+  atsNo          String    @unique
+  dealId         String    @unique
+  deal           AccountsDeal @relation(fields: [dealId], references: [id])
+  vehicleId      String    @unique
+  vehicle        Vehicle   @relation(fields: [vehicleId], references: [id])
+  ownerId        String?
+  owner          User?     @relation(fields: [ownerId], references: [id])
+  taxableAmount  Int?
+  discount       Int?
+  charges        Int?
+  netSettlement  Int?
+  approver       String?
+  dueColor       String?
+  status         String
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model ServiceRequest {
+  id              String    @id @default(uuid())
+  complaintNumber String    @unique
+  vehicleId       String
+  vehicle         Vehicle   @relation(fields: [vehicleId], references: [id])
+  customerId      String
+  customer        Customer  @relation(fields: [customerId], references: [id])
+  ownerId         String?
+  owner           User?     @relation(fields: [ownerId], references: [id])
+  issueCategory   String
+  priority        String
+  mechanic        String?
+  visitType       String
+  sparesUsed      String?
+  complaintNotes  String?
+  beforePhotos    String?
+  afterPhotos     String?
+  otpVerified     Boolean   @default(false)
+  signatureData   String?
+  status          String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model ExchangeRecord {
+  id                     String    @id @default(uuid())
+  exchangeNo             String    @unique
+  previousOwner          String
+  ownershipChain         String?
+  loanStatus             String?
+  make                   String
+  model                  String
+  year                   Int?
+  hoursOnMeter           Int?
+  offeredPrice           Int?
+  liquidationTargetPrice Int?
+  evaluationPhotos       String?
+  status                 String
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+}
+
+model OtpLog {
+  id         String   @id @default(uuid())
+  mobile     String
+  context    String
+  contextRef String?
+  otpHash    String
+  verified   Boolean  @default(false)
+  attempts   Int      @default(0)
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  module     String
+  action     String
+  refId      String?
+  context    String?
+  beforeJson String?
+  afterJson  String?
+  ipAddress  String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+}

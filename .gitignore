@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+*.log
+backend/storage/uploads/
+backend/storage/generated/
+frontend/dist/
+backend/dist/
+.DS_Store
+Thumbs.db
+.claude/
+.sixth/
