@@ -19,8 +19,9 @@ services:
       - key: FRONTEND_URL
         value: https://tafe-dms.onrender.com
 
-  - type: static
+  - type: web
     name: tafe-dms
+    runtime: static
     rootDir: frontend
     buildCommand: npm install && npm run build
     staticPublishPath: dist
