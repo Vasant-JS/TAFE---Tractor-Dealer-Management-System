@@ -341,8 +341,8 @@ export default function Dashboard() {
             <div className="px-6 py-6">
               <h2 className="font-display text-[1.15rem] font-medium text-green-950">Insurance Expiry Alerts</h2>
             </div>
-            <div className="overflow-hidden border-t border-outline-variant">
-              <div className="grid grid-cols-[1.2fr_1fr_0.9fr_0.9fr_0.8fr] bg-green-800 px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-white">
+            <div className="border-t border-outline-variant">
+              <div className="hidden grid-cols-[1.2fr_1fr_0.9fr_0.9fr_0.8fr] bg-green-800 px-6 py-4 text-[12px] font-semibold uppercase tracking-[0.08em] text-white md:grid">
                 <span>Customer</span>
                 <span>Vehicle ID</span>
                 <span>Expiry Date</span>
@@ -350,11 +350,21 @@ export default function Dashboard() {
                 <span>Action</span>
               </div>
               {insuranceAlerts.length ? insuranceAlerts.map((row, index) => (
-                <div key={row.id} className={`grid grid-cols-[1.2fr_1fr_0.9fr_0.9fr_0.8fr] items-center gap-4 px-6 py-5 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}`}>
-                  <span className="text-[0.98rem] text-green-950">{row.customer}</span>
-                  <span className="font-mono text-[0.98rem] text-green-950">{row.vehicleId}</span>
-                  <span className="text-[0.98rem] text-green-950">{row.expiryDate}</span>
+                <div key={row.id} className={`grid gap-3 px-4 py-5 md:grid-cols-[1.2fr_1fr_0.9fr_0.9fr_0.8fr] md:items-center md:gap-4 md:px-6 ${index % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'}`}>
+                  <span className="text-[0.98rem] text-green-950">
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">Customer</span>
+                    {row.customer}
+                  </span>
+                  <span className="font-mono text-[0.98rem] text-green-950">
+                    <span className="mb-1 block font-sans text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">Vehicle ID</span>
+                    {row.vehicleId}
+                  </span>
+                  <span className="text-[0.98rem] text-green-950">
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">Expiry Date</span>
+                    {row.expiryDate}
+                  </span>
                   <span>
+                    <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-slate-400 md:hidden">Days Left</span>
                     <span className={`inline-flex min-w-[64px] justify-center px-2 py-2 text-[11px] font-bold uppercase ${
                       row.days.tone === 'danger'
                         ? 'bg-red-600 text-white'
@@ -365,7 +375,7 @@ export default function Dashboard() {
                       {row.days.label}
                     </span>
                   </span>
-                  <button type="button" onClick={() => navigate('/insurance')} className="bg-green-900 px-4 py-2 text-sm font-semibold text-white">
+                  <button type="button" onClick={() => navigate('/insurance')} className="w-full bg-green-900 px-4 py-2 text-sm font-semibold text-white md:w-auto">
                     Renew
                   </button>
                 </div>

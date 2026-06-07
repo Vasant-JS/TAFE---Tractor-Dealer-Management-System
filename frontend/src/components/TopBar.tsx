@@ -10,7 +10,7 @@ interface TopBarProps {
   onMenuClick?: () => void
 }
 
-export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or Engine No.)', onMenuClick }: TopBarProps) {
+export default function TopBar({ placeholder = 'Search Vehicle', onMenuClick }: TopBarProps) {
   const { user, clearAuth } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
@@ -93,7 +93,7 @@ export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or
       </button>
 
       <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-6">
-        <div className="relative w-full max-w-[448px] min-w-0">
+        <div className="relative w-full max-w-[42vw] min-w-0 sm:max-w-[360px] lg:max-w-[448px]">
           <button
             type="button"
             onClick={runSearch}
@@ -120,7 +120,7 @@ export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or
       </div>
 
       <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:gap-4">
-        <button onClick={showNotifications} className="relative rounded-full p-2 text-slate-500 transition-all hover:bg-slate-50">
+        <button onClick={showNotifications} className="relative rounded-full p-1.5 text-slate-500 transition-all hover:bg-slate-50 sm:p-2">
           <span className="material-symbols-outlined">notifications</span>
           <span className="absolute top-2 right-2 w-2 h-2 bg-red-600 rounded-full border border-white" />
         </button>
@@ -140,7 +140,7 @@ export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or
               </p>
               <p className="text-[10px] text-slate-500 uppercase tracking-widest">{user?.role ?? 'Owner'}</p>
             </div>
-            <div className="relative flex h-10 w-10 items-center justify-center rounded-full bg-[#1b5e20] text-white shadow-sm">
+            <div className="relative flex h-9 w-9 items-center justify-center rounded-full bg-[#1b5e20] text-white shadow-sm sm:h-10 sm:w-10">
               <span className="material-symbols-outlined text-[18px]" style={{ fontVariationSettings: "'FILL' 1" }}>
                 person
               </span>
