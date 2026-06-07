@@ -4,6 +4,11 @@ import api from '../api/client'
 import { canAccess } from '../lib/rbac'
 import { useAuthStore } from '../store/auth.store'
 
+type SidebarProps = {
+  isOpen?: boolean
+  onClose?: () => void
+}
+
 const flowOrder = ['purchase', 'pdi', 'installation', 'delivery', 'exchange', 'safety', 'rto', 'insurance', 'accounts', 'ats']
 
 const defaultModules = [
@@ -29,7 +34,7 @@ function sortByFlow(items: any[]) {
   })
 }
 
-export default function Sidebar() {
+export default function Sidebar({ isOpen = false, onClose }: SidebarProps) {
   const { user } = useAuthStore()
   const [modules, setModules] = useState<any[]>(defaultModules)
 
@@ -45,8 +50,27 @@ export default function Sidebar() {
       .catch(() => setModules(defaultModules))
   }, [])
 
+  const linkBase = 'px-4 py-3 flex items-center gap-3 transition-colors font-label-caps text-xs uppercase tracking-wider'
+  const linkClass = ({ isActive }: { isActive: boolean }) =>
+    isActive
+      ? `bg-slate-800 text-white border-l-4 border-green-800 ring-inset ring-1 ring-green-600 ${linkBase}`
+      : `text-slate-400 hover:bg-slate-800 hover:text-white ${linkBase}`
+
   return (
-    <aside className="fixed left-0 top-0 w-[260px] h-screen z-50 bg-slate-900 border-r border-slate-800 flex flex-col overflow-hidden">
+    <>
+      {isOpen ? (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={onClose}
+          className="fixed inset-0 z-[55] bg-slate-950/55 lg:hidden"
+        />
+      ) : null}
+      <aside
+        className={`fixed left-0 top-0 z-[60] flex h-screen w-[min(86vw,260px)] flex-col overflow-hidden border-r border-slate-800 bg-slate-900 transition-transform duration-200 lg:z-50 lg:w-[260px] lg:translate-x-0 ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
       {/* Logo */}
       <div className="p-6 flex items-center gap-3 shrink-0">
         <div className="w-10 h-10 bg-primary-container flex items-center justify-center rounded">
@@ -60,6 +84,14 @@ export default function Sidebar() {
           </h1>
           <p className="text-[10px] text-slate-500 uppercase font-bold tracking-[0.2em]">Industrial Precision</p>
         </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="ml-auto rounded p-2 text-slate-400 hover:bg-slate-800 hover:text-white lg:hidden"
+          aria-label="Close menu"
+        >
+          <span className="material-symbols-outlined text-xl">close</span>
+        </button>
       </div>
 
       {/* Navigation */}
@@ -70,11 +102,8 @@ export default function Sidebar() {
 
         <NavLink
           to="/dashboard"
-          className={({ isActive }) =>
-            isActive
-              ? 'bg-slate-800 text-white border-l-4 border-green-800 px-4 py-3 flex items-center gap-3 ring-inset ring-1 ring-green-600 font-label-caps text-xs uppercase tracking-wider'
-              : 'text-slate-400 hover:bg-slate-800 hover:text-white px-4 py-3 flex items-center gap-3 transition-colors font-label-caps text-xs uppercase tracking-wider'
-          }
+          onClick={onClose}
+          className={linkClass}
         >
           <span className="material-symbols-outlined text-lg">dashboard</span>
           Dashboard
@@ -84,11 +113,8 @@ export default function Sidebar() {
           <NavLink
             key={route}
             to={route}
-            className={({ isActive }) =>
-              isActive
-                ? 'bg-slate-800 text-white border-l-4 border-green-800 px-4 py-3 flex items-center gap-3 ring-inset ring-1 ring-green-600 font-label-caps text-xs uppercase tracking-wider'
-                : 'text-slate-400 hover:bg-slate-800 hover:text-white px-4 py-3 flex items-center gap-3 transition-colors font-label-caps text-xs uppercase tracking-wider'
-            }
+            onClick={onClose}
+            className={linkClass}
           >
             <span className="material-symbols-outlined text-lg">{icon}</span>
             {title}
@@ -104,11 +130,8 @@ export default function Sidebar() {
             {canAccess(user?.role, 'service') ? (
               <NavLink
                 to="/service"
-                className={({ isActive }) =>
-                  isActive
-                    ? 'bg-slate-800 text-white border-l-4 border-green-800 px-4 py-3 flex items-center gap-3 ring-inset ring-1 ring-green-600 font-label-caps text-xs uppercase tracking-wider'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white px-4 py-3 flex items-center gap-3 transition-colors font-label-caps text-xs uppercase tracking-wider'
-                }
+                onClick={onClose}
+                className={linkClass}
               >
                 <span className="material-symbols-outlined text-lg">build</span>
                 Service Operations
@@ -118,11 +141,8 @@ export default function Sidebar() {
             {canAccess(user?.role, 'fieldService') ? (
               <NavLink
                 to="/field-service"
-                className={({ isActive }) =>
-                  isActive
-                    ? 'bg-slate-800 text-white border-l-4 border-green-800 px-4 py-3 flex items-center gap-3 ring-inset ring-1 ring-green-600 font-label-caps text-xs uppercase tracking-wider'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white px-4 py-3 flex items-center gap-3 transition-colors font-label-caps text-xs uppercase tracking-wider'
-                }
+                onClick={onClose}
+                className={linkClass}
               >
                 <span className="material-symbols-outlined text-lg">tablet_android</span>
                 Field Tech
@@ -140,11 +160,8 @@ export default function Sidebar() {
               <NavLink
                 key={route}
                 to={route}
-                className={({ isActive }) =>
-                  isActive
-                    ? 'bg-slate-800 text-white border-l-4 border-green-800 px-4 py-3 flex items-center gap-3 ring-inset ring-1 ring-green-600 font-label-caps text-xs uppercase tracking-wider'
-                    : 'text-slate-400 hover:bg-slate-800 hover:text-white px-4 py-3 flex items-center gap-3 transition-colors font-label-caps text-xs uppercase tracking-wider'
-                }
+                onClick={onClose}
+                className={linkClass}
               >
                 <span className="material-symbols-outlined text-lg" style={{ fontVariationSettings: "'FILL' 1" }}>{icon}</span>
                 {title}
@@ -155,5 +172,6 @@ export default function Sidebar() {
       </nav>
 
     </aside>
+    </>
   )
 }

@@ -85,3 +85,76 @@ select[readonly],
 textarea[readonly] {
   background-color: #f8fafc;
 }
+
+@media (max-width: 1023px) {
+  .left-\[260px\] {
+    left: 0 !important;
+  }
+
+  main {
+    max-width: 100vw;
+  }
+
+  main .fixed.bottom-0 {
+    max-height: 46vh;
+    overflow-y: auto;
+    padding: 0.75rem 1rem !important;
+  }
+
+  main .fixed.bottom-0,
+  main .fixed.bottom-0 > .flex {
+    align-items: stretch !important;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+  }
+
+  main .fixed.bottom-0 button {
+    min-width: 0 !important;
+    width: 100%;
+  }
+}
+
+@media (max-width: 767px) {
+  main [class*='px-8'],
+  main [class*='px-6'] {
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+  }
+
+  main [class*='py-8'],
+  main [class*='py-6'] {
+    padding-top: 1rem !important;
+    padding-bottom: 1rem !important;
+  }
+
+  main [class*='p-8'] {
+    padding: 1rem !important;
+  }
+
+  main h1 {
+    font-size: 1.6rem !important;
+    line-height: 1.2 !important;
+  }
+
+  main h2 {
+    font-size: 1.25rem !important;
+    line-height: 1.25 !important;
+  }
+
+  main table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    white-space: nowrap;
+  }
+
+  main input,
+  main select,
+  main textarea {
+    min-width: 0;
+  }
+
+  main .grid {
+    min-width: 0;
+  }
+}

@@ -7,9 +7,10 @@ import { getInitials } from '../lib/utils'
 
 interface TopBarProps {
   placeholder?: string
+  onMenuClick?: () => void
 }
 
-export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or Engine No.)' }: TopBarProps) {
+export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or Engine No.)', onMenuClick }: TopBarProps) {
   const { user, clearAuth } = useAuthStore()
   const navigate = useNavigate()
   const location = useLocation()
@@ -81,9 +82,18 @@ export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or
   }
 
   return (
-    <header className="fixed top-0 right-0 left-[260px] h-[60px] z-40 bg-white border-b border-slate-200 flex items-center justify-between px-6">
-      <div className="flex items-center gap-6 flex-1">
-        <div className="relative max-w-[448px] w-full">
+    <header className="fixed left-0 right-0 top-0 z-40 flex h-[60px] items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 sm:px-4 lg:left-[260px] lg:px-6">
+      <button
+        type="button"
+        onClick={onMenuClick}
+        className="shrink-0 rounded p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+        aria-label="Open navigation"
+      >
+        <span className="material-symbols-outlined text-2xl">menu</span>
+      </button>
+
+      <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-6">
+        <div className="relative w-full max-w-[448px] min-w-0">
           <button
             type="button"
             onClick={runSearch}
@@ -103,26 +113,26 @@ export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or
         </div>
       </div>
 
-      <div className="hidden md:flex flex-col items-center">
-        <span className="text-green-900 font-bold text-lg uppercase tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>
+      <div className="hidden xl:flex flex-col items-center">
+        <span className="whitespace-nowrap text-green-900 font-bold text-lg uppercase tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>
           {flowTitle}
         </span>
       </div>
 
-      <div className="flex items-center gap-4">
-        <button onClick={showNotifications} className="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-all relative">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-2 lg:gap-4">
+        <button onClick={showNotifications} className="relative rounded-full p-2 text-slate-500 transition-all hover:bg-slate-50">
           <span className="material-symbols-outlined">notifications</span>
           <span className="absolute top-2 right-2 w-2 h-2 bg-red-600 rounded-full border border-white" />
         </button>
-        <button onClick={showHelp} className="p-2 text-slate-500 hover:bg-slate-50 rounded-full transition-all">
+        <button onClick={showHelp} className="hidden rounded-full p-2 text-slate-500 transition-all hover:bg-slate-50 sm:block">
           <span className="material-symbols-outlined">help_outline</span>
         </button>
-        <div className="h-8 w-px bg-slate-200" />
+        <div className="hidden h-8 w-px bg-slate-200 sm:block" />
         <div className="relative" ref={menuRef}>
           <button
             type="button"
             onClick={() => setMenuOpen((value) => !value)}
-            className="flex items-center gap-3 rounded-full border border-slate-200 bg-white px-2 py-1 transition hover:bg-slate-50"
+            className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-1 transition hover:bg-slate-50 sm:gap-3 sm:px-2"
           >
             <div className="text-right hidden sm:block">
               <p className="text-xs font-bold text-slate-900 leading-none uppercase tracking-tight" style={{ fontFamily: 'Space Grotesk' }}>
