@@ -4,7 +4,7 @@ services:
     runtime: node
     rootDir: backend
     plan: free
-    buildCommand: npm install && npm run prisma:generate && npm run prisma:push && npm run build && node dist/prisma/seed.js
+    buildCommand: npm install --include=dev && npm run prisma:generate && npm run prisma:push && npm run build && node dist/prisma/seed.js
     startCommand: npm run start
     envVars:
       - key: NODE_ENV
@@ -18,7 +18,7 @@ services:
     name: tafe-dms
     runtime: static
     rootDir: frontend
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     staticPublishPath: dist
     envVars:
       - key: VITE_API_BASE_URL
