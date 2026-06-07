@@ -5,7 +5,7 @@
   "description": "Render root entrypoint for the TAFE Dealer Management System backend.",
   "scripts": {
     "postinstall": "cd backend && npm install --include=dev && npm run prisma:generate && npm run build",
-    "start": "cd backend && npm run prisma:push && node dist/prisma/seed.js && npm run start"
+    "start": "cd backend && npm run prisma:push && npm run start"
   },
   "engines": {
     "node": "24.x"
