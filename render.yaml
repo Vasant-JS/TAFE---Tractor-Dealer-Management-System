@@ -3,19 +3,15 @@ services:
     name: tafe-dms-api
     runtime: node
     rootDir: backend
-    plan: starter
+    plan: free
     buildCommand: npm install && npm run prisma:generate && npm run build
     preDeployCommand: npm run prisma:push && npm run prisma:seed
     startCommand: npm run start
-    disk:
-      name: tafe-dms-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
       - key: DATABASE_URL
-        value: file:/var/data/dev.db
+        value: file:./dev.db
       - key: FRONTEND_URL
         value: https://tafe-dms.onrender.com
 
