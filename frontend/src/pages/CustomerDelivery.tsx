@@ -27,41 +27,87 @@ type WorkItem = {
   documents: { id: string; name: string; status: string; fileName?: string | null }[]
 }
 
-type LocalUpload = {
-  fileName: string
-  previewUrl: string
+type GatePassDraft = {
+  jobCardNo: string
+  date: string
+  time: string
+  toName: string
+  permissionText: string
+  item: string
+  quantity: string
 }
 
-type DeliveryDraft = {
-  deliveryDate: string
-  deliveryItems: Record<string, boolean>
-  agreementAccepted: boolean
-  sectionSaved: {
-    items: boolean
-    agreement: boolean
+const initialGatePass: GatePassDraft = {
+  jobCardNo: '',
+  date: '',
+  time: '',
+  toName: '',
+  permissionText: '',
+  item: '',
+  quantity: '',
+}
+
+const customerHistoryFields = [
+  'Customer Name',
+  'Customer Address',
+  'Mobile Number',
+  'Aadhaar Number',
+  'PAN Number',
+  'Reference / Key Person',
+  'Selling Dealer Name and Stamp',
+  'Office / SM / DSP Name',
+  'Tractor Serial Number',
+  'Model',
+  'Date of Installation',
+  'Chassis Number',
+  'Engine Number',
+  'Battery Make',
+  'Battery SN',
+  'FIP Number',
+  'OIB Number',
+  'Tyre Make',
+  'Front Tyre LH',
+  'Front Tyre RH',
+  'Front Tyre Make',
+  'Rear Tyre LH',
+  'Rear Tyre RH',
+  'Rear Tyre Make',
+]
+
+const salesDocuments = [
+  { section: 'Customer Agreement', name: 'Customer Agreement', formats: 'PDF, JPG, PNG', note: 'Signed customer agreement copy' },
+  { section: 'Voucher & Sheets', name: 'Voucher', formats: 'PDF, JPG, PNG', note: 'Payment or delivery voucher' },
+  { section: 'Voucher & Sheets', name: 'Customer History Sheet', formats: 'PDF, JPG, PNG', note: 'Customer history sheet copy' },
+  { section: 'Customer Details', name: 'Aadhaar Card', formats: 'PDF, JPG, PNG', note: 'Customer Aadhaar proof' },
+  { section: 'Customer Details', name: 'PAN Card', formats: 'PDF, JPG, PNG', note: 'Customer PAN proof' },
+  { section: 'Customer Details', name: 'Customer Details Form', formats: 'PDF, JPG, PNG', note: 'Full customer detail sheet' },
+  { section: 'Gatepass, Invoice & Quotation', name: 'Delivery Challan', formats: 'PDF, JPG, PNG', note: 'Signed delivery challan' },
+  { section: 'Gatepass, Invoice & Quotation', name: 'Gate Pass', formats: 'PDF, JPG, PNG', note: 'Generated or uploaded gate pass' },
+  { section: 'Gatepass, Invoice & Quotation', name: 'Tractor Invoice', formats: 'PDF', note: 'Final tractor invoice' },
+  { section: 'Gatepass, Invoice & Quotation', name: 'Quotation', formats: 'PDF', note: 'Sales quotation' },
+  { section: 'Delivery Media', name: 'Delivery Photo', formats: 'JPG, PNG', note: 'Photo taken during delivery' },
+  { section: 'Delivery Media', name: 'Video Byte', formats: 'MP4, MOV', note: 'Customer delivery video byte' },
+] as const
+
+const docSections = ['Customer Agreement', 'Voucher & Sheets', 'Customer Details', 'Gatepass, Invoice & Quotation', 'Delivery Media']
+const requiredHistoryFields = ['Customer Name', 'Customer Address', 'Mobile Number', 'Aadhaar Number', 'PAN Number', 'Model', 'Tractor Serial Number', 'Engine Number']
+const requiredGatePassFields: Array<keyof GatePassDraft> = ['jobCardNo', 'date', 'time', 'toName', 'permissionText', 'item', 'quantity']
+
+function parsePayload(payload?: string | null) {
+  try {
+    return payload ? JSON.parse(payload) : {}
+  } catch {
+    return {}
   }
 }
 
-const deliveredItems = [
-  'Tractor Unit (Cleaned)',
-  'Ignition Keys (2 Sets)',
-  'Operator Manual',
-  'Standard Tool Kit',
-  'Jack & Handle',
-  'Warranty Booklet',
-]
+function fieldKey(label: string) {
+  return label.replace(/[^a-z0-9]+/gi, '-').toLowerCase()
+}
 
-const deliveryDocumentGuide = [
-  { name: 'Aadhaar Card', formats: 'JPG, PNG, PDF', note: 'Mandatory identity proof', size: 'max 5MB' },
-  { name: 'PAN Card', formats: 'JPG, PNG, PDF', note: 'Mandatory PAN proof', size: 'max 5MB' },
-  { name: 'Customer Photo', formats: 'JPG, PNG', note: 'Customer photo at handover', size: 'max 3MB' },
-  { name: 'Delivery Photo', formats: 'JPG, PNG', note: 'Taken at the time of delivery', size: 'max 3MB' },
-  { name: 'Delivery Challan', formats: 'JPG, PNG, PDF', note: 'Signed delivery challan copy', size: 'max 5MB' },
-  { name: 'Gate Pass', formats: 'JPG, PNG, PDF', note: 'Vehicle gate pass copy', size: 'max 5MB' },
-  { name: 'Tractor Invoice', formats: 'PDF', note: 'Original tractor invoice', size: 'max 10MB' },
-  { name: 'Quotation', formats: 'PDF', note: 'Sales quotation copy', size: 'max 10MB' },
-  { name: 'Video Byte', formats: 'MP4, MOV', note: 'Delivery moment video byte', size: 'max 50MB' },
-] as const
+function compactDigits(value: string) {
+  return value.replace(/\D/g, '')
+}
 
 export default function CustomerDelivery() {
   const navigate = useNavigate()
@@ -69,37 +115,29 @@ export default function CustomerDelivery() {
   const requestedVehicleId = searchParams.get('vehicleId') ?? ''
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
   const [workItems, setWorkItems] = useState<WorkItem[]>([])
-  const [deliveryItems, setDeliveryItems] = useState<Record<string, boolean>>(
-    Object.fromEntries(deliveredItems.map((item) => [item, false])),
-  )
   const [selectedVehicleId, setSelectedVehicleId] = useState('')
-  const [deliveryDate, setDeliveryDate] = useState('')
+  const [historyValues, setHistoryValues] = useState<Record<string, string>>({})
   const [agreementAccepted, setAgreementAccepted] = useState(false)
-  const [signature, setSignature] = useState<LocalUpload | null>(null)
+  const [gatePassOpen, setGatePassOpen] = useState(false)
+  const [gatePass, setGatePass] = useState<GatePassDraft>(initialGatePass)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [gatePassErrors, setGatePassErrors] = useState<Partial<Record<keyof GatePassDraft, string>>>({})
   const [loading, setLoading] = useState(false)
   const [pageReady, setPageReady] = useState(false)
   const [loadIssue, setLoadIssue] = useState('')
-  const [sectionSaved, setSectionSaved] = useState({ items: false, agreement: false })
-  const [editUnlocked, setEditUnlocked] = useState(false)
 
-  const defaultDeliveryItems = useMemo(
-    () => Object.fromEntries(deliveredItems.map((item) => [item, false])),
-    [],
-  )
-
-  const parsePayload = (payload?: string | null) => {
-    try {
-      return payload ? JSON.parse(payload) : {}
-    } catch {
-      return {}
-    }
-  }
+  const selectedVehicle = useMemo(() => vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null, [vehicles, selectedVehicleId])
+  const workItem = useMemo(() => workItems.find((item) => item.vehicleId === selectedVehicleId) ?? null, [selectedVehicleId, workItems])
+  const workPayload = useMemo(() => parsePayload(workItem?.payload), [workItem])
+  const isFinalized = Boolean(workPayload['Sales History Finalized'] || workPayload['Delivery Finalized'])
 
   const load = async () => {
     const [vehicleRes, workItemRes] = await Promise.allSettled([api.get('/vehicles'), api.get('/modules/delivery/work-items')])
     const vehicleRows = vehicleRes.status === 'fulfilled' ? vehicleRes.value.data : []
     const workItemRows = workItemRes.status === 'fulfilled' ? workItemRes.value.data : []
-    const filtered = vehicleRows.filter((vehicle: Vehicle) => ['Allocated to Customer', 'Delivered', 'Safety Completed', 'Insured', 'RTO Verification In Progress', 'RTO Filed', 'Financially Closed', 'Closed'].includes(vehicle.status))
+    const filtered = vehicleRows.filter((vehicle: Vehicle) =>
+      ['Allocated to Customer', 'Delivered', 'Safety Completed', 'Insured', 'RTO Verification In Progress', 'RTO Filed', 'Financially Closed', 'Closed'].includes(vehicle.status),
+    )
     setVehicles(filtered)
     setWorkItems(workItemRows)
     if (requestedVehicleId && filtered.some((vehicle: Vehicle) => vehicle.id === requestedVehicleId)) {
@@ -108,9 +146,9 @@ export default function CustomerDelivery() {
       setSelectedVehicleId(filtered[0].id)
     }
     if (vehicleRes.status === 'rejected' && workItemRes.status === 'rejected') {
-      setLoadIssue('Delivery data is temporarily unavailable. Refresh once the backend is up.')
+      setLoadIssue('Sales history data is temporarily unavailable. Refresh once the backend is up.')
     } else if (!filtered.length) {
-      setLoadIssue('No vehicle is allocated to a customer yet. Complete Installation Certificate first.')
+      setLoadIssue('No vehicle is ready for Sales History yet. Complete Installation Certificate first.')
     } else {
       setLoadIssue('')
     }
@@ -119,210 +157,155 @@ export default function CustomerDelivery() {
 
   useEffect(() => {
     load().catch(() => {
-      setLoadIssue('Delivery data is temporarily unavailable. Refresh once the backend is up.')
+      setLoadIssue('Sales history data is temporarily unavailable. Refresh once the backend is up.')
       setPageReady(true)
     })
   }, [requestedVehicleId])
 
-  const selectedVehicle = useMemo(() => vehicles.find((vehicle) => vehicle.id === selectedVehicleId) ?? null, [vehicles, selectedVehicleId])
-  const workItem = useMemo(() => workItems.find((item) => item.vehicleId === selectedVehicleId) ?? null, [selectedVehicleId, workItems])
-  const workPayload = useMemo(() => parsePayload(workItem?.payload), [workItem])
-  const isFinalized = Boolean(workPayload['Delivery Finalized'])
-  const isEditing = !isFinalized || editUnlocked
-  const missingItems = deliveredItems.filter((item) => !deliveryItems[item]).length
-  const draftStorageKey = selectedVehicleId ? `delivery-draft-${selectedVehicleId}` : ''
+  useEffect(() => {
+    const payload = parsePayload(workItem?.payload)
+    setHistoryValues({
+      ...Object.fromEntries(customerHistoryFields.map((field) => [field, String(payload[field] ?? '')])),
+      'Customer Name': String(payload['Customer Name'] ?? selectedVehicle?.customer?.name ?? ''),
+      'Customer Address': String(payload['Customer Address'] ?? selectedVehicle?.customer?.address ?? ''),
+      'Mobile Number': String(payload['Mobile Number'] ?? selectedVehicle?.customer?.mobile ?? ''),
+      'Model': String(payload.Model ?? selectedVehicle?.model ?? ''),
+      'Chassis Number': String(payload['Chassis Number'] ?? selectedVehicle?.chassisNo ?? ''),
+      'Tractor Serial Number': String(payload['Tractor Serial Number'] ?? payload['Chassis Number'] ?? selectedVehicle?.chassisNo ?? ''),
+      'Engine Number': String(payload['Engine Number'] ?? selectedVehicle?.engineNo ?? ''),
+    })
+    setAgreementAccepted(Boolean(payload['Customer Agreement Accepted']))
+    setGatePass({
+      jobCardNo: String(payload['Gate Pass Job Card No'] ?? ''),
+      date: String(payload['Gate Pass Date'] ?? ''),
+      time: String(payload['Gate Pass Time'] ?? ''),
+      toName: String(payload['Gate Pass To'] ?? selectedVehicle?.customer?.name ?? ''),
+      permissionText: String(payload['Gate Pass Permission'] ?? 'is permitted to take out of the workshop / premises'),
+      item: String(payload['Gate Pass Item'] ?? selectedVehicle?.model ?? ''),
+      quantity: String(payload['Gate Pass Quantity'] ?? '1'),
+    })
+  }, [selectedVehicle, workItem])
 
-  const saveDraftToStorage = (nextDraft: DeliveryDraft) => {
-    if (!draftStorageKey || isFinalized) return
-    localStorage.setItem(draftStorageKey, JSON.stringify(nextDraft))
+  const visibleDocuments = useMemo(() => {
+    return salesDocuments.map((doc) => {
+      const liveDoc = workItem?.documents?.find((item) => item.name === doc.name)
+      return { ...doc, id: liveDoc?.id ?? '', fileName: liveDoc?.fileName ?? null, active: Boolean(liveDoc) }
+    })
+  }, [workItem])
+
+  const uploadedDocCount = visibleDocuments.filter((document) => document.fileName).length
+  const gatePassGenerated = Boolean(workPayload['Gate Pass Generated'])
+
+  const validateSalesHistory = (finalize = false) => {
+    const nextErrors: Record<string, string> = {}
+    requiredHistoryFields.forEach((field) => {
+      if (!String(historyValues[field] ?? '').trim()) nextErrors[field] = 'Required'
+    })
+    const mobile = compactDigits(historyValues['Mobile Number'] ?? '')
+    if (mobile && mobile.length !== 10) nextErrors['Mobile Number'] = 'Enter 10 digits'
+    const aadhaar = compactDigits(historyValues['Aadhaar Number'] ?? '')
+    if (aadhaar && aadhaar.length !== 12) nextErrors['Aadhaar Number'] = 'Enter 12 digits'
+    const pan = String(historyValues['PAN Number'] ?? '').trim().toUpperCase()
+    if (pan && !/^[A-Z]{5}[0-9]{4}[A-Z]$/.test(pan)) nextErrors['PAN Number'] = 'Use PAN format ABCDE1234F'
+    if (finalize && !agreementAccepted) nextErrors['Customer Agreement Accepted'] = 'Accept agreement'
+    if (finalize && !gatePassGenerated) nextErrors['Gate Pass'] = 'Generate gate pass before finalizing'
+    setErrors(nextErrors)
+    if (Object.keys(nextErrors).length) {
+      toast.error('Please fix highlighted Sales History fields')
+      return false
+    }
+    return true
   }
 
-  useEffect(() => {
-    if (!selectedVehicleId) return
-    setEditUnlocked(false)
-    const raw = draftStorageKey ? localStorage.getItem(draftStorageKey) : null
-    const payload = parsePayload(workItem?.payload)
-    const restoredItems = Object.fromEntries(
-      deliveredItems.map((item) => [item, String(payload[item] ?? '').toLowerCase() === 'true' || Boolean(payload[item])]),
-    )
-    const hasAnyRestoredItem = Object.values(restoredItems).some(Boolean)
-    const finalized = Boolean(payload['Delivery Finalized'])
-
-    if (raw && !finalized) {
-      try {
-        const draft = JSON.parse(raw) as DeliveryDraft
-        setDeliveryDate(draft.deliveryDate ?? '')
-        setDeliveryItems(draft.deliveryItems ?? defaultDeliveryItems)
-        setAgreementAccepted(Boolean(draft.agreementAccepted))
-        setSectionSaved(draft.sectionSaved ?? { items: false, agreement: false })
-      } catch {
-        setDeliveryDate(String(payload['Delivery Date'] ?? ''))
-        setDeliveryItems(hasAnyRestoredItem ? restoredItems : defaultDeliveryItems)
-        setAgreementAccepted(Boolean(payload['Agreement Confirmation']))
-        setSectionSaved({
-          items: hasAnyRestoredItem,
-          agreement: Boolean(payload['Agreement Confirmation']) && Boolean(payload['Customer Signature']),
-        })
-      }
-      return
-    }
-
-    setDeliveryDate(String(payload['Delivery Date'] ?? ''))
-    setDeliveryItems(hasAnyRestoredItem ? restoredItems : defaultDeliveryItems)
-    setAgreementAccepted(Boolean(payload['Agreement Confirmation']))
-    setSectionSaved({
-      items: finalized || hasAnyRestoredItem,
-      agreement: finalized || (Boolean(payload['Agreement Confirmation']) && Boolean(payload['Customer Signature'])),
+  const validateGatePass = () => {
+    const nextErrors: Partial<Record<keyof GatePassDraft, string>> = {}
+    requiredGatePassFields.forEach((field) => {
+      if (!String(gatePass[field] ?? '').trim()) nextErrors[field] = 'Required'
     })
-    if (!finalized && draftStorageKey) localStorage.removeItem(draftStorageKey)
-  }, [defaultDeliveryItems, draftStorageKey, selectedVehicleId, workItem])
-
-  useEffect(() => {
-    return () => {
-      if (signature?.previewUrl) URL.revokeObjectURL(signature.previewUrl)
+    if (gatePass.quantity && (!/^\d+$/.test(gatePass.quantity) || Number(gatePass.quantity) < 1)) {
+      nextErrors.quantity = 'Use a valid quantity'
     }
-  }, [signature])
+    setGatePassErrors(nextErrors)
+    if (Object.keys(nextErrors).length) {
+      toast.error('Please fix highlighted Gate Pass fields')
+      return false
+    }
+    return true
+  }
 
-  const saveDeliveredItemsSection = async () => {
+  const saveSalesHistory = async (finalize = false) => {
     if (!selectedVehicle) {
       toast.error('Select a vehicle first')
       return
     }
-    if (!deliveryDate) {
-      toast.error('Select the delivery date before saving this section')
-      return
-    }
-    if (missingItems) {
-      toast.error('Confirm all delivered items before saving this section')
-      return
-    }
+    if (!validateSalesHistory(finalize)) return
+    setLoading(true)
     try {
       const payload: Record<string, string | boolean> = {
+        ...historyValues,
         'Vehicle Code': selectedVehicle.code,
-        'Engine Number': selectedVehicle.engineNo,
-        'Chassis Number': selectedVehicle.chassisNo,
-        'Customer Name': selectedVehicle.customer?.name ?? '',
-        'Delivery Date': deliveryDate,
-        'Agreement Confirmation': agreementAccepted,
+        'Customer Name': historyValues['Customer Name'] || selectedVehicle.customer?.name || '',
+        'Customer Address': historyValues['Customer Address'] || selectedVehicle.customer?.address || '',
+        'Mobile Number': historyValues['Mobile Number'] || selectedVehicle.customer?.mobile || '',
+        'Model': historyValues.Model || selectedVehicle.model,
+        'Chassis Number': historyValues['Tractor Serial Number'] || historyValues['Chassis Number'] || selectedVehicle.chassisNo,
+        'Tractor Serial Number': historyValues['Tractor Serial Number'] || historyValues['Chassis Number'] || selectedVehicle.chassisNo,
+        'Engine Number': historyValues['Engine Number'] || selectedVehicle.engineNo,
+        'Customer Agreement Accepted': agreementAccepted,
+        'Gate Pass Job Card No': gatePass.jobCardNo,
+        'Gate Pass Date': gatePass.date,
+        'Gate Pass Time': gatePass.time,
+        'Gate Pass To': gatePass.toName,
+        'Gate Pass Permission': gatePass.permissionText,
+        'Gate Pass Item': gatePass.item,
+        'Gate Pass Quantity': gatePass.quantity,
+        'Gate Pass Generated': gatePassGenerated,
+        'Sales History Finalized': finalize,
+        'Delivery Finalized': finalize,
+        'Delivery Date': gatePass.date,
       }
-      deliveredItems.forEach((item) => {
-        payload[item] = deliveryItems[item]
-      })
       if (workItem?.id) {
         await api.patch(`/work-items/${workItem.id}/payload`, payload)
       } else {
         await api.post('/modules/delivery/work-items', payload)
       }
       await load()
-      const nextDraft: DeliveryDraft = {
-        deliveryDate,
-        deliveryItems,
-        agreementAccepted,
-        sectionSaved: { ...sectionSaved, items: true },
-      }
-      setSectionSaved(nextDraft.sectionSaved)
-      saveDraftToStorage(nextDraft)
-      toast.success('Section 01 saved and document uploads unlocked')
+      toast.success(finalize ? 'Sales History finalized' : 'Sales History saved')
     } catch (error: any) {
-      toast.error(error.response?.data?.message ?? 'Could not save delivered items section')
+      toast.error(error.response?.data?.message ?? 'Could not save Sales History')
+    } finally {
+      setLoading(false)
     }
   }
 
-  const saveAgreementSection = async () => {
-    if (!sectionSaved.items) {
-      toast.error('Save Section 01 first')
-      return
-    }
-    if (!allDocsUploaded) {
-      toast.error('Finish Section 02 document uploads before saving Section 03')
-      return
-    }
-    if (!signature && !workPayload['Customer Signature']) {
-      toast.error('Upload the customer signature first')
-      return
-    }
-    if (!agreementAccepted) {
-      toast.error('Accept the agreement checkbox first')
-      return
-    }
-    if (!workItem?.id) {
-      toast.error('Save Section 01 first to create the delivery record')
-      return
-    }
-    try {
-      await api.patch(`/work-items/${workItem.id}/payload`, {
-        'Delivery Date': deliveryDate,
-        'Customer Signature': signature?.fileName ?? String(workPayload['Customer Signature'] ?? ''),
-        'Agreement Confirmation': agreementAccepted,
-      })
-      const nextDraft: DeliveryDraft = {
-        deliveryDate,
-        deliveryItems,
-        agreementAccepted,
-        sectionSaved: { ...sectionSaved, agreement: true },
-      }
-      setSectionSaved(nextDraft.sectionSaved)
-      saveDraftToStorage(nextDraft)
-      await load()
-      toast.success('Section 03 saved')
-    } catch (error: any) {
-      toast.error(error.response?.data?.message ?? 'Could not save agreement section')
-    }
-  }
-
-  const setSignatureUpload = (file?: File) => {
-    if (!file) return
-    setSignature((current) => {
-      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
-      return {
-        fileName: file.name,
-        previewUrl: URL.createObjectURL(file),
-      }
-    })
-    toast.success(`${file.name} attached`)
-  }
-
-  const clearSignatureUpload = () => {
-    setSignature((current) => {
-      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
-      return null
-    })
-  }
-
-  const viewLocalUpload = (upload: LocalUpload | null) => {
-    if (!upload) return
-    window.open(upload.previewUrl, '_blank', 'noopener,noreferrer')
-  }
-
-  const finalizeDelivery = async () => {
+  const saveGatePass = async () => {
+    if (!validateGatePass()) return
     if (!selectedVehicle) {
       toast.error('Select a vehicle first')
       return
     }
-    if (!sectionSaved.items || !allDocsUploaded || !sectionSaved.agreement || !agreementAccepted) {
-      toast.error('Finish all sections before finalizing the delivery receipt')
-      return
-    }
-    if (!workItem?.id) {
-      toast.error('Save Section 01 first')
-      return
-    }
-    setLoading(true)
     try {
-      await api.patch(`/work-items/${workItem.id}/payload`, {
-        'Delivery Date': deliveryDate,
-        'Customer Signature': signature?.fileName ?? String(workPayload['Customer Signature'] ?? ''),
-        'Agreement Confirmation': agreementAccepted,
-        'Delivery Finalized': true,
-      })
-      if (draftStorageKey) localStorage.removeItem(draftStorageKey)
+      const payload = {
+        ...historyValues,
+        'Vehicle Code': selectedVehicle.code,
+        'Gate Pass Job Card No': gatePass.jobCardNo,
+        'Gate Pass Date': gatePass.date,
+        'Gate Pass Time': gatePass.time,
+        'Gate Pass To': gatePass.toName,
+        'Gate Pass Permission': gatePass.permissionText,
+        'Gate Pass Item': gatePass.item,
+        'Gate Pass Quantity': gatePass.quantity,
+        'Gate Pass Generated': true,
+      }
+      if (workItem?.id) {
+        await api.patch(`/work-items/${workItem.id}/payload`, payload)
+      } else {
+        await api.post('/modules/delivery/work-items', payload)
+      }
       await load()
-      setEditUnlocked(false)
-      toast.success('Delivery receipt generated. This step is now locked in view mode.')
+      toast.success('Gate Pass generated')
     } catch (error: any) {
-      toast.error(error.response?.data?.message ?? 'Could not finalize delivery sheet')
-    } finally {
-      setLoading(false)
+      toast.error(error.response?.data?.message ?? 'Could not generate Gate Pass')
     }
   }
 
@@ -333,12 +316,6 @@ export default function CustomerDelivery() {
     toast.success(`${file.name} uploaded`)
   }
 
-  const removeDocument = async (id: string) => {
-    await api.patch(`/documents/${id}/remove`)
-    await load()
-    toast.success('Document removed')
-  }
-
   const viewDocument = async (id: string, fileName?: string | null) => {
     if (!fileName) return
     const { data } = await api.get(`/documents/${id}/file`, { responseType: 'blob' })
@@ -347,343 +324,395 @@ export default function CustomerDelivery() {
     setTimeout(() => URL.revokeObjectURL(url), 60000)
   }
 
-  const visibleDocuments = useMemo(() => {
-    if (!workItem?.documents?.length) {
-      return deliveryDocumentGuide.map((doc) => ({ ...doc, id: '', fileName: null as string | null, active: false }))
+  const printGatePass = () => {
+    if (!validateGatePass()) return
+    const gatePassCard = document.getElementById('gate-pass-print-card')
+    if (!gatePassCard) {
+      toast.error('Gate Pass preview is not ready')
+      return
     }
-    return deliveryDocumentGuide.map((doc) => {
-      const liveDoc = workItem.documents.find((item) => item.name === doc.name)
-      return {
-        ...doc,
-        id: liveDoc?.id ?? '',
-        fileName: liveDoc?.fileName ?? null,
-        active: Boolean(liveDoc),
-      }
-    })
-  }, [workItem])
+    const printWindow = window.open('', '_blank', 'width=640,height=860')
+    if (!printWindow) {
+      toast.error('Allow popup access to print the Gate Pass')
+      return
+    }
+    printWindow.document.write(`
+      <!doctype html>
+      <html>
+        <head>
+          <title>Gate Pass</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              min-height: 100vh;
+              display: flex;
+              align-items: flex-start;
+              justify-content: center;
+              background: #ffffff;
+              color: #001b52;
+              font-family: Arial, Helvetica, sans-serif;
+            }
+            .print-wrap {
+              width: 480px;
+              margin: 6px auto;
+            }
+            .gate-pass-card {
+              border: 2px solid #173783;
+              padding: 30px 26px;
+              color: #001b52;
+              min-height: 665px;
+            }
+            .text-center { text-align: center; }
+            .title { margin: 0; font-size: 26px; font-weight: 700; }
+            .address { margin: 6px 0 0; font-size: 15px; line-height: 1.35; }
+            .gate-title { margin: 30px 0 0; font-size: 30px; font-weight: 700; text-decoration: underline; }
+            .top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; margin-top: 34px; font-size: 20px; }
+            .job-no { color: #b5121b; font-size: 30px; font-weight: 700; line-height: 1.35; }
+            .stack { display: grid; gap: 18px; }
+            .line { border-bottom: 1px dotted #173783; padding-bottom: 12px; }
+            .to-line { margin-top: 38px; font-size: 20px; }
+            .permission { margin-top: 30px; font-size: 22px; line-height: 1.8; }
+            .item-line { margin-top: 28px; font-size: 20px; }
+            .qty { float: right; }
+            .signature { margin-top: 82px; font-size: 20px; font-weight: 700; }
+            @page { size: auto; margin: 8mm; }
+          </style>
+        </head>
+        <body>
+          <div class="print-wrap">${gatePassCard.innerHTML}</div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    setTimeout(() => {
+      printWindow.print()
+      printWindow.close()
+    }, 250)
+  }
 
-  const uploadedDocCount = useMemo(() => visibleDocuments.filter((document) => document.fileName).length, [visibleDocuments])
-  const allDocsUploaded = uploadedDocCount === deliveryDocumentGuide.length
-
-  const uploadAcceptForDocument = (name: string) => {
-    if (name === 'Video Byte') return 'image/*,.png,.jpg,.jpeg,.webp,.mp4,.mov,video/mp4,video/quicktime'
+  const acceptForDocument = (name: string) => {
+    if (name === 'Video Byte') return '.mp4,.mov,video/mp4,video/quicktime'
     if (name === 'Tractor Invoice' || name === 'Quotation') return '.pdf,application/pdf'
-    if (name === 'Customer Photo' || name === 'Delivery Photo') return 'image/*,.png,.jpg,.jpeg'
+    if (name === 'Delivery Photo') return 'image/*,.png,.jpg,.jpeg'
     return 'image/*,.png,.jpg,.jpeg,.pdf,application/pdf'
   }
 
-  const signaturePreviewUrl = signature?.previewUrl ?? null
-  const savedSignatureName = signature?.fileName ?? String(workPayload['Customer Signature'] ?? '')
-  const canAccessSection2 = sectionSaved.items
-  const canAccessSection3 = sectionSaved.items && allDocsUploaded
+  const updateHistoryField = (field: string, value: string) => {
+    const normalizedValue = field === 'PAN Number' ? value.toUpperCase() : value
+    setHistoryValues((current) => ({ ...current, [field]: normalizedValue }))
+    setErrors((current) => {
+      const next = { ...current }
+      delete next[field]
+      return next
+    })
+  }
+
+  const maxLengthForField = (field: string) => {
+    if (field === 'Aadhaar Number') return 12
+    if (field === 'Mobile Number') return 10
+    if (field === 'PAN Number') return 10
+    return undefined
+  }
+
+  const historyField = (field: string, label = field, className = '', type = 'text') => (
+    <label className={`space-y-1 ${className}`}>
+      <span className="flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+        {label}
+        {requiredHistoryFields.includes(field) ? <span className="text-red-600">*</span> : null}
+      </span>
+      <input
+        id={fieldKey(field)}
+        type={type}
+        value={historyValues[field] ?? ''}
+        onChange={(event) => updateHistoryField(field, event.target.value)}
+        maxLength={maxLengthForField(field)}
+        className={`h-9 w-full border px-3 text-sm outline-none focus:border-green-900 ${errors[field] ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-[#fff7d6]'}`}
+      />
+      {errors[field] ? <p className="text-[10px] font-semibold text-red-600">{errors[field]}</p> : null}
+    </label>
+  )
+
+  const historyTextArea = (field: string, label = field, rows = 3) => (
+    <label className="space-y-1">
+      <span className="flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+        {label}
+        {requiredHistoryFields.includes(field) ? <span className="text-red-600">*</span> : null}
+      </span>
+      <textarea
+        id={fieldKey(field)}
+        value={historyValues[field] ?? ''}
+        onChange={(event) => updateHistoryField(field, event.target.value)}
+        rows={rows}
+        className={`w-full resize-none border px-3 py-2 text-sm outline-none focus:border-green-900 ${errors[field] ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-[#fff7d6]'}`}
+      />
+      {errors[field] ? <p className="text-[10px] font-semibold text-red-600">{errors[field]}</p> : null}
+    </label>
+  )
 
   return (
-    <div className="min-h-[calc(100vh-60px)] bg-[#f7fbf1] pb-[110px]">
+    <div className="min-h-[calc(100vh-60px)] bg-[#f7fbf1] pb-[100px]">
       <div className="mx-auto max-w-[1380px] px-8 py-8">
-        {!pageReady ? (
-          <section className="mb-6 rounded border border-slate-200 bg-white p-5 text-sm text-slate-600 shadow-sm">Loading delivery data...</section>
-        ) : null}
+        {!pageReady ? <section className="mb-6 border border-slate-200 bg-white p-5 text-sm text-slate-600">Loading Sales History data...</section> : null}
 
         {loadIssue ? (
-          <section className="mb-6 rounded border border-amber-200 bg-amber-50 p-5 shadow-sm">
-            <p className="text-sm font-semibold text-amber-900">Delivery Flow Note</p>
+          <section className="mb-6 border border-amber-200 bg-amber-50 p-5">
+            <p className="text-sm font-semibold text-amber-900">Sales History Flow Note</p>
             <p className="mt-2 text-sm text-amber-800">{loadIssue}</p>
-            <div className="mt-4 flex gap-3">
-              <button onClick={() => navigate('/installation')} className="rounded border border-amber-300 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-900">
-                Open Installation
-              </button>
-              <button onClick={() => navigate('/guided-flow')} className="rounded border border-amber-300 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-900">
-                Open Guided Flow
-              </button>
-            </div>
+              <button onClick={() => navigate('/installation')} className="mt-4 border border-amber-300 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-900">
+              Open Installation Certificate
+            </button>
           </section>
         ) : null}
 
-        <section className="mb-6 rounded border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="grid gap-6 xl:grid-cols-[1.2fr_1.1fr_1fr_1fr]">
+        <section className="mb-4 border border-slate-200 bg-white p-4">
+          <div className="grid gap-3 lg:grid-cols-[1fr_1fr_1fr]">
+            <label className="space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Select Vehicle</span>
+              <select value={selectedVehicleId} onChange={(event) => setSelectedVehicleId(event.target.value)} className="h-9 w-full border border-slate-200 bg-[#fff7d6] px-3 text-sm outline-none focus:border-green-900">
+                {vehicles.map((vehicle) => (
+                  <option key={vehicle.id} value={vehicle.id}>
+                    {vehicle.code} - {vehicle.model}
+                  </option>
+                ))}
+              </select>
+            </label>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Customer Name</p>
-              <p className="mt-1 font-display text-[24px] font-semibold text-[#00450d]">{selectedVehicle?.customer?.name ?? 'Unassigned'}</p>
-              <p className="mt-1 font-mono text-[12px] text-slate-500">UID: {selectedVehicle?.customer?.id ?? '--'}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Customer</p>
+              <p className="mt-2 text-xl font-semibold text-green-950">{selectedVehicle?.customer?.name ?? 'Unassigned'}</p>
+              <p className="text-sm text-slate-500">{selectedVehicle?.customer?.mobile ?? 'Mobile not captured'}</p>
             </div>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Vehicle Model</p>
-              <p className="mt-1 font-display text-[24px] font-semibold text-slate-900">{selectedVehicle?.model ?? 'Select Vehicle'}</p>
-              <p className="mt-1 font-mono text-[12px] text-slate-500">CHASSIS: {selectedVehicle?.chassisNo ?? '--'}</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Vehicle</p>
+              <p className="mt-2 text-xl font-semibold text-green-950">{selectedVehicle?.model ?? 'Select vehicle'}</p>
+              <p className="font-mono text-sm text-slate-500">{selectedVehicle?.chassisNo ?? '--'}</p>
             </div>
-            <div>
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Delivery Date</p>
-              <input
-                type="date"
-                value={deliveryDate}
-                disabled={!isEditing}
-                onChange={(event) => setDeliveryDate(event.target.value)}
-                className="mt-2 h-11 w-full rounded border border-slate-200 px-3 font-mono text-sm outline-none focus:border-[#1b5e20] disabled:bg-slate-50 disabled:text-slate-500"
-              />
-            </div>
-            <div className="flex flex-col justify-center">
-              <label className="space-y-2">
-                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Select Vehicle</span>
-                <select
-                  value={selectedVehicleId}
-                  disabled={!isEditing}
-                  onChange={(event) => setSelectedVehicleId(event.target.value)}
-                  className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20] disabled:bg-slate-50 disabled:text-slate-500"
-                >
-                  {vehicles.map((vehicle) => (
-                    <option key={vehicle.id} value={vehicle.id}>
-                      {vehicle.code} - {vehicle.model}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-          </div>
-
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-4 border-t border-slate-100 pt-5">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className={`rounded px-3 py-1 text-[10px] font-bold uppercase tracking-wider ${isFinalized ? 'bg-green-900 text-white' : 'bg-amber-100 text-amber-900'}`}>
-                {isFinalized ? 'Delivery Step Finished' : 'Delivery In Progress'}
-              </span>
-              <span className="text-sm text-slate-600">
-                {isFinalized ? 'This vehicle has completed the delivery stage. Open Edit only if corrections are required.' : 'Complete all three sections, then finalize to lock this stage.'}
-              </span>
-            </div>
-            {isFinalized ? (
-              <button
-                type="button"
-                onClick={() => setEditUnlocked((current) => !current)}
-                className="rounded border border-[#1b5e20] px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-[#1b5e20]"
-              >
-                {isEditing ? 'Close Edit Mode' : 'Edit Delivery'}
-              </button>
-            ) : null}
           </div>
         </section>
 
-        <div className="space-y-6">
-          <section className="rounded border border-slate-200 bg-white p-6 shadow-sm">
-            <div className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h2 className="font-display text-[24px] font-semibold uppercase tracking-tight text-[#00450d]">Section 01: Delivered Items</h2>
-                {sectionSaved.items ? <span className="rounded bg-[#1b5e20] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Saved</span> : null}
-              </div>
-              {isEditing ? (
-                <button type="button" onClick={() => setDeliveryItems(Object.fromEntries(deliveredItems.map((item) => [item, true])))} className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                  Select All Items
-                </button>
-              ) : null}
+        <section className="mb-4 border border-slate-200 bg-white p-4">
+          <div className="mb-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Customer Agreement</p>
+              <h2 className="text-xl font-semibold text-green-950">Agreement & Customer History Details</h2>
             </div>
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {deliveredItems.map((item) => (
-                <label key={item} className={`flex items-center gap-4 rounded border p-3 ${deliveryItems[item] ? 'border-[#d3ecd0] bg-[#f6fcf1]' : 'border-transparent bg-white'}`}>
-                  <input
-                    type="checkbox"
-                    checked={deliveryItems[item]}
-                    disabled={!isEditing}
-                    onChange={(event) => setDeliveryItems((current) => ({ ...current, [item]: event.target.checked }))}
-                    className="h-5 w-5 rounded-sm accent-[#1b5e20] disabled:opacity-100"
-                  />
-                  <div>
-                    <p className="font-space-grotesk text-sm font-bold text-slate-900">{item}</p>
-                    <p className="text-[11px] text-slate-500">Confirm physical handover to the customer.</p>
+            <label className={`flex items-center gap-3 border px-4 py-2 text-xs font-bold uppercase tracking-wider ${errors['Customer Agreement Accepted'] ? 'border-red-500 text-red-700' : 'border-green-900 text-green-950'}`}>
+              <input type="checkbox" checked={agreementAccepted} onChange={(event) => setAgreementAccepted(event.target.checked)} className="h-4 w-4 accent-green-900" />
+              Agreement Accepted
+            </label>
+          </div>
+
+          {errors['Gate Pass'] ? <p className="mb-3 border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{errors['Gate Pass']}</p> : null}
+
+          <div className="grid gap-4 xl:grid-cols-[1.1fr_0.95fr_1.15fr]">
+            <div className="space-y-3 border border-slate-200 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Dealer & Customer</p>
+              {historyTextArea('Selling Dealer Name and Stamp', "Selling Dealer's Name and Stamp", 3)}
+              {historyTextArea('Customer Address', 'Name of Customer and Address', 5)}
+              <div className="grid gap-3 md:grid-cols-2">
+                {historyField('Customer Name')}
+                {historyField('Mobile Number')}
+                {historyField('Aadhaar Number')}
+                {historyField('PAN Number')}
+                {historyField('Reference / Key Person', 'Reference / Key Person', 'md:col-span-2')}
+                {historyField('Office / SM / DSP Name', 'Office / SM / DSP Name', 'md:col-span-2')}
+              </div>
+            </div>
+
+            <div className="space-y-3 border border-slate-200 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Tractor Details</p>
+              {historyField('Tractor Serial Number', 'Tractor Serial No')}
+              {historyField('Model')}
+              {historyField('FIP Number', 'FIP No.')}
+              {historyField('Date of Installation', 'Date of Installation', '', 'date')}
+            </div>
+
+            <div className="space-y-3 border border-slate-200 p-3">
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Engine, Battery & Tyres</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                {historyField('Engine Number', 'Engine Serial No.')}
+                {historyField('Battery SN', 'Battery No.')}
+                {historyField('Battery Make', 'Battery Make')}
+                {historyField('OIB Number', 'OIB No.')}
+              </div>
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Tyre No. & Make</p>
+                <div className="overflow-hidden border border-slate-200">
+                  <div className="grid grid-cols-[80px_1fr_1fr_1fr] bg-slate-50 text-[10px] font-bold uppercase tracking-[0.08em] text-slate-500">
+                    <div className="border-r border-slate-200 px-2 py-2" />
+                    <div className="border-r border-slate-200 px-2 py-2">Left</div>
+                    <div className="border-r border-slate-200 px-2 py-2">Right</div>
+                    <div className="px-2 py-2">Make</div>
                   </div>
-                </label>
-              ))}
-            </div>
-            {isEditing ? (
-              <div className="mt-6 flex justify-end">
-                <button type="button" onClick={saveDeliveredItemsSection} className="rounded border border-[#1b5e20] px-5 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#1b5e20]">
-                  Save Section 01
-                </button>
-              </div>
-            ) : null}
-          </section>
-
-          <section className={`rounded border border-slate-200 bg-white p-6 shadow-sm ${canAccessSection2 || isFinalized ? '' : 'opacity-60'}`}>
-            <div className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h2 className="font-display text-[24px] font-semibold uppercase tracking-tight text-[#00450d]">Section 02: Document Uploads</h2>
-                {allDocsUploaded ? <span className="rounded bg-[#1b5e20] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Saved</span> : null}
-              </div>
-              {!canAccessSection2 && !isFinalized ? <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Save Section 01 First</span> : null}
-            </div>
-
-            <div className="mb-5 rounded border border-[#acf4a4] bg-[#f3fbe9] p-4 text-sm text-slate-700">
-              <p className="font-semibold text-[#00450d]">What to upload here</p>
-              <p className="mt-2">
-                Upload all 9 PRS-required delivery documents in this section. Once every document is uploaded, Section 03 unlocks. After finalization, this section switches to view mode unless you explicitly click Edit Delivery.
-              </p>
-            </div>
-
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {visibleDocuments.map((document) => (
-                <div key={document.name} className={`rounded border p-4 ${document.fileName ? 'border-[#acf4a4] bg-[#f4fbf4]' : 'border-dashed border-slate-300 bg-white'}`}>
-                  <div className="flex items-center gap-4">
-                    <div className={`flex h-12 w-12 items-center justify-center rounded-sm ${document.fileName ? 'bg-[#1b5e20] text-white' : 'bg-slate-100 text-slate-400'}`}>
-                      <span className="material-symbols-outlined">{document.fileName ? 'description' : 'upload_file'}</span>
+                  {[
+                    ['Front', 'Front Tyre LH', 'Front Tyre RH', 'Front Tyre Make'],
+                    ['Rear', 'Rear Tyre LH', 'Rear Tyre RH', 'Rear Tyre Make'],
+                  ].map(([label, left, right, make]) => (
+                    <div key={label} className="grid grid-cols-[80px_1fr_1fr_1fr] border-t border-slate-200">
+                      <div className="border-r border-slate-200 px-2 py-2 text-xs font-bold uppercase text-slate-600">{label}</div>
+                      {[left, right, make].map((field) => (
+                        <input
+                          key={field}
+                          value={historyValues[field] ?? ''}
+                          onChange={(event) => updateHistoryField(field, event.target.value)}
+                          className="h-9 min-w-0 border-r border-slate-200 bg-[#fff7d6] px-2 text-sm outline-none last:border-r-0 focus:bg-[#ffefad]"
+                        />
+                      ))}
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-space-grotesk text-sm font-bold text-slate-900">{document.name}</p>
-                      <p className="text-[11px] text-slate-500">{document.fileName ?? `${document.formats} • ${document.size}`}</p>
-                      <p className="mt-1 text-[11px] text-slate-400">{document.note}</p>
-                    </div>
-                  </div>
-
-                  {document.fileName ? (
-                    isEditing ? (
-                      <div className="mt-4 grid gap-2 sm:grid-cols-3">
-                        <button onClick={() => viewDocument(document.id, document.fileName)} className="flex h-10 items-center justify-center gap-2 rounded border border-[#1b5e20] bg-white text-[10px] font-bold uppercase tracking-wider text-[#1b5e20]">
-                          <span className="material-symbols-outlined text-[14px]">visibility</span>
-                          View
-                        </button>
-                        <label className="flex h-10 cursor-pointer items-center justify-center gap-2 rounded border border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-[#1b5e20]">
-                          <span className="material-symbols-outlined text-[14px]">upload</span>
-                          Re-upload
-                          <input type="file" accept={uploadAcceptForDocument(document.name)} className="hidden" onChange={(event) => uploadDocument(document.id, event.target.files?.[0])} />
-                        </label>
-                        <button onClick={() => removeDocument(document.id)} className="flex h-10 items-center justify-center gap-2 rounded border border-red-200 bg-white text-[10px] font-bold uppercase tracking-wider text-red-700">
-                          <span className="material-symbols-outlined text-[14px]">delete</span>
-                          Remove
-                        </button>
-                      </div>
-                    ) : (
-                      <button onClick={() => viewDocument(document.id, document.fileName)} className="mt-4 flex h-10 w-full items-center justify-center gap-2 rounded border border-[#1b5e20] bg-white text-[10px] font-bold uppercase tracking-wider text-[#1b5e20]">
-                        <span className="material-symbols-outlined text-[14px]">visibility</span>
-                        View Document
-                      </button>
-                    )
-                  ) : document.active && canAccessSection2 ? (
-                    isEditing ? (
-                      <label className="mt-4 flex h-10 cursor-pointer items-center justify-center gap-2 rounded border border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-[#1b5e20]">
-                        <span className="material-symbols-outlined text-[14px]">upload</span>
-                        Upload Document
-                        <input type="file" accept={uploadAcceptForDocument(document.name)} className="hidden" onChange={(event) => uploadDocument(document.id, event.target.files?.[0])} />
-                      </label>
-                    ) : (
-                      <div className="mt-4 flex h-10 items-center justify-center rounded border border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Document not uploaded
-                      </div>
-                    )
-                  ) : (
-                    <div className="mt-4 flex h-10 items-center justify-center rounded border border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                      Save Section 01 to unlock uploads
-                    </div>
-                  )}
+                  ))}
                 </div>
-              ))}
-            </div>
-          </section>
-
-          <section className={`rounded border border-slate-200 bg-white p-6 shadow-sm ${canAccessSection3 || isFinalized ? '' : 'opacity-60'}`}>
-            <div className="mb-6 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <h2 className="font-display text-[24px] font-semibold uppercase tracking-tight text-[#00450d]">Section 03: Agreement</h2>
-                {sectionSaved.agreement ? <span className="rounded bg-[#1b5e20] px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-white">Saved</span> : null}
+                {historyField('Tyre Make', 'Common Tyre Make')}
               </div>
-              {!canAccessSection3 && !isFinalized ? <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Finish Section 02 First</span> : null}
             </div>
+          </div>
+        </section>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Customer Signature</p>
-                <div className="flex h-[140px] flex-col justify-between rounded border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-4">
-                  <div className="text-sm text-slate-600">
-                    {savedSignatureName || 'Upload the customer signature image or signed capture file here.'}
-                  </div>
-                  {isEditing ? (
-                    <div className="flex flex-wrap gap-3">
-                      <label className="inline-flex cursor-pointer items-center justify-center rounded border border-[#1b5e20] px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-[#1b5e20]">
-                        <input type="file" accept="image/*" className="hidden" onChange={(event) => setSignatureUpload(event.target.files?.[0])} />
-                        {savedSignatureName ? 'Re-upload Signature' : 'Upload Signature'}
-                      </label>
-                      {savedSignatureName ? (
-                        <>
-                          {signature ? (
-                            <button type="button" onClick={() => viewLocalUpload(signature)} className="rounded border border-slate-300 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700">
+        <section className="mb-4 border border-slate-200 bg-white p-4">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Voucher, Sheets, Documents & Media</p>
+              <h2 className="text-xl font-semibold text-green-950">{uploadedDocCount} / {salesDocuments.length} Uploaded</h2>
+            </div>
+            <button type="button" onClick={() => setGatePassOpen(true)} className="border border-green-900 bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-green-950">
+              Generate Gate Pass
+            </button>
+          </div>
+
+          <div className="space-y-4">
+            {docSections.map((section) => (
+              <div key={section}>
+                <h3 className="mb-2 text-xs font-bold uppercase tracking-[0.12em] text-slate-600">{section}</h3>
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {visibleDocuments.filter((document) => document.section === section).map((document) => (
+                    <div key={document.name} className={`border p-3 ${document.fileName ? 'border-green-200 bg-green-50/40' : 'border-dashed border-slate-300 bg-white'}`}>
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="font-semibold text-green-950">{document.name}</p>
+                          <p className="mt-1 text-xs text-slate-500">{document.fileName ?? document.formats}</p>
+                          <p className="mt-1 text-xs text-slate-400">{document.note}</p>
+                        </div>
+                        <span className={`material-symbols-outlined ${document.fileName ? 'text-green-900' : 'text-slate-300'}`}>
+                          {document.fileName ? 'task_alt' : 'upload_file'}
+                        </span>
+                      </div>
+                      {document.active ? (
+                        <div className="mt-4 flex flex-wrap gap-3">
+                          {document.fileName ? (
+                            <button type="button" onClick={() => viewDocument(document.id, document.fileName)} className="text-xs font-bold uppercase tracking-wider text-green-900">
                               View
                             </button>
                           ) : null}
-                          <button type="button" onClick={clearSignatureUpload} className="rounded border border-red-300 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-red-700">
-                            Remove
-                          </button>
-                        </>
-                      ) : null}
+                          <label className="cursor-pointer text-xs font-bold uppercase tracking-wider text-slate-600">
+                            {document.fileName ? 'Re-upload' : 'Upload'}
+                            <input type="file" accept={acceptForDocument(document.name)} className="hidden" onChange={(event) => uploadDocument(document.id, event.target.files?.[0])} />
+                          </label>
+                        </div>
+                      ) : (
+                        <p className="mt-4 text-xs font-semibold text-amber-700">Save Sales History once to unlock this upload slot.</p>
+                      )}
                     </div>
-                  ) : null}
+                  ))}
                 </div>
               </div>
-              <div className="space-y-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Signature Preview</p>
-                <div className="flex h-[140px] items-center justify-center overflow-hidden rounded border border-slate-200 bg-slate-50">
-                  {signaturePreviewUrl ? (
-                    <img src={signaturePreviewUrl} alt="Customer signature preview" className="h-full w-full object-contain" />
-                  ) : savedSignatureName ? (
-                    <div className="px-5 text-center text-sm text-slate-500">{savedSignatureName}</div>
-                  ) : (
-                    <div className="text-sm italic text-slate-400">Signature required for submission</div>
-                  )}
+            ))}
+          </div>
+        </section>
+      </div>
+
+      {gatePassOpen ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 p-6">
+          <div className="max-h-[92vh] w-full max-w-[980px] overflow-y-auto bg-white p-4 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Gate Pass</p>
+                <h2 className="text-xl font-semibold text-green-950">Generate Gate Pass</h2>
+              </div>
+              <button type="button" onClick={() => setGatePassOpen(false)} className="material-symbols-outlined text-slate-500">close</button>
+            </div>
+
+            <div className="grid gap-5 lg:grid-cols-[1fr_380px]">
+              <div className="grid content-start gap-3 md:grid-cols-2">
+                {[
+                  ['Job Card No', 'jobCardNo'],
+                  ['Date', 'date'],
+                  ['Time', 'time'],
+                  ['To', 'toName'],
+                  ['Permission Text', 'permissionText'],
+                  ['Model / Spares / Items', 'item'],
+                  ['Quantity', 'quantity'],
+                ].map(([label, key]) => (
+                  <label key={key} className={`space-y-2 ${key === 'permissionText' ? 'md:col-span-2' : ''}`}>
+                    <span className="flex items-center justify-between gap-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                      {label}
+                      <span className="text-red-600">*</span>
+                    </span>
+                    <input
+                      type={key === 'date' ? 'date' : key === 'time' ? 'time' : 'text'}
+                      value={gatePass[key as keyof GatePassDraft]}
+                      onChange={(event) => {
+                        setGatePass((current) => ({ ...current, [key]: event.target.value }))
+                        setGatePassErrors((current) => {
+                          const next = { ...current }
+                          delete next[key as keyof GatePassDraft]
+                          return next
+                        })
+                      }}
+                      className={`h-9 w-full border px-3 text-sm outline-none focus:border-green-900 ${gatePassErrors[key as keyof GatePassDraft] ? 'border-red-400 bg-red-50' : 'border-slate-200 bg-[#fff7d6]'}`}
+                    />
+                    {gatePassErrors[key as keyof GatePassDraft] ? <p className="text-[10px] font-semibold text-red-600">{gatePassErrors[key as keyof GatePassDraft]}</p> : null}
+                  </label>
+                ))}
+              </div>
+
+              <div id="gate-pass-print-card">
+                <div className="gate-pass-card border-2 border-blue-900 p-5 text-blue-950">
+                <div className="text-center">
+                  <p className="title text-xl font-bold">OM GANESH TRACTORS</p>
+                  <p className="address text-xs">Shankar Mutt Road, Shimoga - 1, Phone: 08182-274741, 593967</p>
+                  <p className="gate-title mt-5 text-2xl font-bold underline">GATE PASS</p>
+                </div>
+                <div className="top-grid mt-6 grid grid-cols-2 gap-5 text-sm">
+                  <p>Job card No. <span className="job-no text-2xl font-bold text-red-700">{gatePass.jobCardNo || '____'}</span></p>
+                  <div className="stack space-y-2">
+                    <p>Date: {gatePass.date || '__________'}</p>
+                    <p>Time: {gatePass.time || '__________'}</p>
+                  </div>
+                </div>
+                <p className="to-line line mt-8 border-b border-dotted border-blue-900 pb-2">To, {gatePass.toName || '________________________________'}</p>
+                <p className="permission mt-5 leading-8">
+                  {gatePass.permissionText || 'is permitted to take out of the Workshop / our premises'}
+                </p>
+                <p className="item-line line mt-5 border-b border-dotted border-blue-900 pb-2">
+                  Model/Spares/Items: {gatePass.item || '________________'} <span className="qty float-right">Qnty. {gatePass.quantity || '___'}</span>
+                </p>
+                <p className="signature mt-16 text-right font-semibold">WorkShop / Incharge / Authorised Signature</p>
                 </div>
               </div>
             </div>
 
-            <label className="mt-6 flex items-start gap-4 rounded border border-[#acf4a4] bg-[#f3fbe9] p-4">
-              <input
-                type="checkbox"
-                checked={agreementAccepted}
-                disabled={!isEditing}
-                onChange={(event) => setAgreementAccepted(event.target.checked)}
-                className="mt-1 h-5 w-5 rounded-sm accent-[#1b5e20] disabled:opacity-100"
-              />
-              <div className="text-xs leading-relaxed text-slate-700">
-                I confirm that the vehicle and the listed accessories were received in good condition, and the operations and safety maintenance schedules have been explained to me.
-              </div>
-            </label>
-
-            {isEditing ? (
-              <div className="mt-6 flex justify-end">
-                <button type="button" onClick={saveAgreementSection} disabled={!canAccessSection3} className="rounded border border-[#1b5e20] px-5 py-2.5 text-[11px] font-bold uppercase tracking-wider text-[#1b5e20] disabled:cursor-not-allowed disabled:border-slate-300 disabled:text-slate-400">
-                  Save Section 03
-                </button>
-              </div>
-            ) : null}
-          </section>
-        </div>
-      </div>
-
-      <footer className="fixed bottom-0 left-[260px] right-0 z-30 flex items-center justify-between border-t border-slate-200 bg-white px-8 py-4 shadow-[0_-4px_10px_rgba(0,0,0,0.03)]">
-        <div className="flex items-center gap-6 text-xs font-bold text-slate-600">
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${sectionSaved.items ? 'bg-[#1b5e20]' : 'bg-red-500'}`} />
-            {sectionSaved.items ? 'Section 01 saved' : 'Section 01 pending'}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${allDocsUploaded ? 'bg-[#1b5e20]' : 'bg-amber-500'}`} />
-            {allDocsUploaded ? 'Section 02 saved' : `${uploadedDocCount}/${deliveryDocumentGuide.length} documents uploaded`}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${sectionSaved.agreement ? 'bg-[#1b5e20]' : 'bg-red-500'}`} />
-            {sectionSaved.agreement ? 'Section 03 saved' : 'Section 03 pending'}
-          </div>
-          <div className="flex items-center gap-2">
-            <span className={`h-2 w-2 rounded-full ${isFinalized ? 'bg-[#1b5e20]' : 'bg-slate-300'}`} />
-            {isFinalized ? 'Delivery finalized' : 'Finalize to lock this step'}
+            <div className="mt-6 flex justify-end gap-3">
+              <button type="button" onClick={printGatePass} className="border border-slate-300 px-5 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                Print / Save PDF
+              </button>
+              <button type="button" onClick={saveGatePass} className="bg-green-900 px-5 py-2 text-[11px] font-bold uppercase tracking-wider text-white">
+                Save Generated Gate Pass
+              </button>
+            </div>
           </div>
         </div>
-        <div className="flex items-center gap-4">
-          <button onClick={() => navigate('/installation')} className="rounded border-2 border-[#1b5e20] px-6 py-2.5 text-sm font-bold uppercase text-[#1b5e20]">Back</button>
-          <button onClick={() => navigate(`/vehicle-flow/${selectedVehicleId}`)} disabled={!selectedVehicleId} className="rounded border border-slate-300 px-6 py-2.5 text-sm font-bold uppercase text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400">
-            Flow Tracker
+      ) : null}
+
+      <footer className="fixed bottom-0 left-[260px] right-0 z-30 flex items-center justify-between border-t border-slate-200 bg-white px-8 py-4">
+        <div className="text-sm font-semibold text-slate-600">
+          {agreementAccepted ? 'Agreement accepted' : 'Agreement pending'} | {gatePassGenerated ? 'Gate pass generated' : 'Gate pass pending'} | {uploadedDocCount}/{salesDocuments.length} files
+        </div>
+        <div className="flex gap-3">
+          <button type="button" onClick={() => saveSalesHistory(false)} disabled={loading || !selectedVehicle} className="border border-green-900 px-5 py-2.5 text-[11px] font-bold uppercase tracking-wider text-green-950 disabled:border-slate-300 disabled:text-slate-400">
+            Save Sales History
           </button>
-          <button onClick={() => navigate('/safety')} disabled={!isFinalized} className="rounded border border-slate-300 px-6 py-2.5 text-sm font-bold uppercase text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400">
-            Next Step
-          </button>
-          <button
-            onClick={finalizeDelivery}
-            disabled={loading || !selectedVehicle || !agreementAccepted || !sectionSaved.items || !sectionSaved.agreement || !allDocsUploaded || !isEditing}
-            className="rounded bg-[#1b5e20] px-10 py-2.5 text-sm font-bold uppercase text-white disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
-          >
-            {loading ? 'Saving...' : isFinalized && !isEditing ? 'Receipt Locked' : 'Finalize & Generate Receipt'}
+          <button type="button" onClick={() => saveSalesHistory(true)} disabled={loading || !selectedVehicle || !agreementAccepted} className="bg-green-900 px-6 py-2.5 text-[11px] font-bold uppercase tracking-wider text-white disabled:bg-slate-200 disabled:text-slate-400">
+            Finalize
           </button>
         </div>
       </footer>

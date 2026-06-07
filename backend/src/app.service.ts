@@ -204,7 +204,7 @@ export class AppService {
   async dashboard() {
     const [vehicleCount, readyCount, workItems, receivable, vehicles, modules, queue, pendingPdiCount, readyInstallCount, allocatedCount, deliveredCount] = await Promise.all([
       this.prisma.vehicle.count(),
-      this.prisma.vehicle.count({ where: { status: { in: ['Ready for Installation', 'Allocated to Customer', 'Delivered', 'RTO Filed'] } } }),
+      this.prisma.vehicle.count({ where: { status: { in: ['Allocated to Customer', 'Delivered', 'RTO Filed'] } } }),
       this.prisma.workItem.count({ where: { status: { notIn: ['Complete', 'Closed'] } } }),
       this.prisma.accountsDeal.aggregate({ _sum: { finalBalance: true }, where: { status: { not: 'Financially Closed' } } }),
       this.prisma.vehicle.findMany({ include: { customer: true }, take: 8, orderBy: { createdAt: 'desc' } }),
@@ -214,8 +214,8 @@ export class AppService {
         orderBy: { updatedAt: 'desc' },
         take: 8,
       }),
+      this.prisma.vehicle.count({ where: { status: { in: ['Pending Installation', 'Ready for Installation'] } } }),
       this.prisma.vehicle.count({ where: { status: 'Pending PDI' } }),
-      this.prisma.vehicle.count({ where: { status: 'Ready for Installation' } }),
       this.prisma.vehicle.count({ where: { status: 'Allocated to Customer' } }),
       this.prisma.vehicle.count({ where: { status: { in: ['Delivered', 'RTO Filed'] } } }),
     ])
@@ -266,7 +266,7 @@ export class AppService {
 
   async modules() {
     const rows = await this.prisma.dmsModule.findMany()
-    const order = ['purchase', 'pdi', 'installation', 'delivery', 'exchange', 'safety', 'insurance', 'rto', 'accounts', 'ats', 'service', 'admin']
+    const order = ['purchase', 'pdi', 'installation', 'delivery', 'exchange', 'safety', 'rto', 'insurance', 'accounts', 'ats', 'service', 'admin']
     return rows.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key)).map((row) => this.presentModule(row))
   }
 
@@ -307,10 +307,10 @@ export class AppService {
       { key: 'purchase', title: 'Purchase Invoice', route: '/purchase-invoices' },
       { key: 'pdi', title: 'Pre-Delivery Inspection', route: '/pdi' },
       { key: 'installation', title: 'Installation Certificate', route: '/installation' },
-      { key: 'delivery', title: 'Customer Delivery Sheet', route: '/delivery' },
+      { key: 'delivery', title: 'Sales History', route: '/delivery' },
       { key: 'safety', title: 'Safety & Maintenance', route: '/safety' },
-      { key: 'insurance', title: 'Insurance Management', route: '/insurance' },
       { key: 'rto', title: 'RTO Documents', route: '/rto' },
+      { key: 'insurance', title: 'Insurance Management', route: '/insurance' },
       { key: 'accounts', title: 'Accounts Module', route: '/accounts' },
       { key: 'ats', title: 'ATS Charge Sheet', route: '/ats' },
     ] as const
@@ -347,20 +347,22 @@ export class AppService {
 
       const currentStepByStatus: Record<string, string> = {
         'Pending PDI': 'pdi',
+        'Pending Installation': 'installation',
         'Ready for Installation': 'installation',
         'Allocated to Customer': 'delivery',
         Delivered: 'safety',
-        'Safety Acknowledged': 'insurance',
-        'Safety Completed': 'insurance',
-        Insured: 'rto',
-        'RTO Verification In Progress': 'accounts',
-        'RTO Filed': 'accounts',
+        'Safety Acknowledged': 'rto',
+        'Safety Completed': 'rto',
+        'RTO Verification In Progress': 'insurance',
+        'RTO Filed': 'insurance',
+        Insured: 'accounts',
         'Financially Closed': 'ats',
         Closed: 'ats',
       }
 
       let currentKey = currentStepByStatus[vehicle.status] ?? trackerOrder.find((step) => !completedMap[step.key])?.key ?? 'ats'
-      if (completedMap.rto && !completedMap.accounts) currentKey = 'accounts'
+      if (completedMap.rto && !completedMap.insurance) currentKey = 'insurance'
+      if (completedMap.insurance && !completedMap.accounts) currentKey = 'accounts'
       if (completedMap.accounts && !completedMap.ats) currentKey = 'ats'
       const currentIndex = trackerOrder.findIndex((step) => step.key === currentKey)
 
@@ -512,7 +514,7 @@ export class AppService {
         address,
         district: this.pick(body, ['District']) || null,
         state: this.pick(body, ['State']) || null,
-        pincode: this.onlyDigits(this.pick(body, ['Pincode'])) || null,
+        pincode: this.onlyDigits(this.pick(body, ['Pincode', 'PIN Code'])) || null,
         panNumber: this.pick(body, ['PAN Number', 'PAN']) || null,
         aadhaar: this.onlyDigits(this.pick(body, ['aadhaar', 'Aadhaar Number', 'Customer Aadhaar'])) || null,
       },
@@ -539,7 +541,7 @@ export class AppService {
         model,
         variant: this.pick(body, ['Variant']) || null,
         registrationNo: this.pick(body, ['Vehicle Registration Number']) || null,
-        status: this.pick(body, ['status']) || 'Pending PDI',
+      status: this.pick(body, ['status']) || 'Pending Installation',
       },
     })
     await this.audit({ module: 'vehicles', action: 'VEHICLE_CREATED', refId: vehicle.id, context: { code: vehicle.code } })
@@ -608,7 +610,7 @@ export class AppService {
         nextVehicleStatus = status === 'Verification In Progress' ? 'RTO Verification In Progress' : updated.module.statusAfter
       }
       if (status === 'Rejected' && updated.moduleKey === 'rto') {
-        nextVehicleStatus = 'Insured'
+        nextVehicleStatus = 'Safety Acknowledged'
       }
       if (nextVehicleStatus) {
         await this.prisma.vehicle.update({ where: { id: updated.vehicleId }, data: { status: nextVehicleStatus } })
@@ -678,12 +680,12 @@ export class AppService {
         where: { id: updated.insuranceRecordId },
         data: {
           policyNumber: this.pick(payload, ['Policy Number']) || undefined,
-          provider: this.pick(payload, ['Provider']) || undefined,
+          provider: this.pick(payload, ['Company', 'Provider']) || undefined,
           premiumAmount: this.parseCurrency(this.pick(payload, ['Premium Amount'])) || undefined,
-          startDate: this.parseDate(this.pick(payload, ['Start Date'])) || undefined,
-          endDate: this.parseDate(this.pick(payload, ['End Date'])) || undefined,
-          nominee: this.pick(payload, ['Nominee']) || undefined,
-          coverageType: this.pick(payload, ['Coverage Type']) || undefined,
+          startDate: this.parseDate(this.pick(payload, ['Start Cover Date', 'Start Date'])) || undefined,
+          endDate: this.parseDate(this.pick(payload, ['End Cover Date', 'End Date'])) || undefined,
+          nominee: this.pick(payload, ['Contact Number']) || undefined,
+          coverageType: this.pick(payload, ['Coverage Ratio', 'Coverage Type']) || undefined,
           fileName: this.pick(payload, ['Policy Copy']) || undefined,
         },
       })
@@ -693,16 +695,12 @@ export class AppService {
       await this.prisma.accountsDeal.update({
         where: { id: updated.accountsDealId },
         data: {
-          bookingAmount: this.parseCurrency(this.pick(payload, ['Booking Amount'])) || undefined,
-          loanDisbursal: this.parseCurrency(this.pick(payload, ['Loan Disbursal'])) || undefined,
-          cashReceipt: this.parseCurrency(this.pick(payload, ['Cash Receipt'])) || undefined,
-          discountApproval: this.parseCurrency(this.pick(payload, ['Discount Approval'])) || undefined,
-          finalBalance: this.parseCurrency(this.pick(payload, ['Final Balance'])) || undefined,
-          closureDate: this.parseDate(this.pick(payload, ['Deal Closure Date'])) || undefined,
+          bookingAmount: this.parseCurrency(this.pick(payload, ['Deal Value', 'Total Deal Value'])) || undefined,
+          cashReceipt: this.parseCurrency(this.pick(payload, ['Closed Value'])) || undefined,
+          finalBalance: this.parseCurrency(this.pick(payload, ['Balance', 'Final Balance'])) || undefined,
           receiptsJson: JSON.stringify({
-            paymentMode: this.pick(payload, ['Payment Mode']) || '',
-            bankReference: this.pick(payload, ['Bank Reference']) || '',
-            paymentProof: this.pick(payload, ['Payment Proof']) || '',
+            accountDetails: this.pick(payload, ['Account Details']) || '',
+            handledBy: this.pick(payload, ['Handled By']) || '',
           }),
         },
       })
@@ -895,6 +893,9 @@ export class AppService {
   }
 
   private async createPurchaseWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
+    const irn = this.pick(body, ['IRN'])
+    const ackNumber = this.pick(body, ['Ack Number'])
+    const ackDate = this.parseDate(this.pick(body, ['Ack Date']))
     const invoiceNumber = this.pick(body, ['Invoice Serial Number'])
     const eWayBillNumber = this.pick(body, ['E-Way Bill Number'])
     const invoiceDate = this.parseDate(this.pick(body, ['Invoice Date']))
@@ -902,12 +903,43 @@ export class AppService {
     const vehicleCount = this.parseInteger(this.pick(body, ['Number of Vehicles Received']))
     const totalValue = this.parseCurrency(this.pick(body, ['Total Purchase Value']))
     const consignerName = this.pick(body, ['Consigner Name'])
+    const requiredTextFields = [
+      'Consigner GST Number',
+      'Consigner Address',
+      'CIN Number',
+      'PAN',
+      'Receiver Name',
+      'Receiver Address',
+      'Receiver State',
+      'Receiver GSTIN',
+      'Place of Supply',
+      'Consignor Name',
+      'Consignor Address',
+      'Consignor State',
+      'Consignor GSTIN',
+      'Consignor PAN',
+    ]
     const model = this.pick(body, ['Model'])
     const engineNo = this.pick(body, ['Engine Number'])
     const chassisNo = this.pick(body, ['Chassis Number'])
 
-    if (!invoiceNumber || !eWayBillNumber || !invoiceDate || !eWayBillDate || vehicleCount < 1 || !totalValue || !consignerName || !model || !engineNo || !chassisNo) {
-      throw new BadRequestException('Fill the mandatory invoice, logistics, and tractor fields')
+    if (
+      !irn ||
+      !ackNumber ||
+      !ackDate ||
+      !invoiceNumber ||
+      !eWayBillNumber ||
+      !invoiceDate ||
+      !eWayBillDate ||
+      vehicleCount < 1 ||
+      !totalValue ||
+      !consignerName ||
+      requiredTextFields.some((field) => !this.pick(body, [field])) ||
+      !model ||
+      !engineNo ||
+      !chassisNo
+    ) {
+      throw new BadRequestException('Fill the mandatory invoice, receiver, consigner, logistics, and tractor fields')
     }
 
     const duplicate = await this.prisma.purchaseInvoice.findFirst({
@@ -963,12 +995,13 @@ export class AppService {
 
   private async createPdiWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
     const vehicle = await this.requireVehicle(body)
-    this.requireVehicleWorkflowState(vehicle.status, ['Pending PDI', 'PDI Failed'], 'PDI can only be recorded once for vehicles waiting in the inspection queue')
+    this.requireVehicleWorkflowState(vehicle.status, ['Pending PDI', 'PDI Failed'], 'PDI can only be recorded after the purchase invoice is completed')
     const owner = await this.prisma.user.findFirst({ where: { role: 'technician' } })
     const existing = await this.prisma.pDIRecord.findUnique({ where: { vehicleId: vehicle.id } })
-    if (existing && vehicle.status === 'Ready for Installation') {
+    if (existing && ['Pending Installation', 'Allocated to Customer'].includes(vehicle.status)) {
       throw new BadRequestException('This vehicle has already been inspected. Open the saved inspection result instead of creating a new one.')
     }
+    const pdiStatusAfter = 'Pending Installation'
     const record =
       existing
         ? await this.prisma.pDIRecord.update({
@@ -978,7 +1011,7 @@ export class AppService {
               signatoryPhoto: this.pick(body, ['Authorized Signatory Photo']) || null,
               otpVerified: Boolean(this.pick(body, ['Inspector OTP'])),
               completedAt: new Date(),
-              status: 'Ready for Installation',
+              status: pdiStatusAfter,
             },
           })
         : await this.prisma.pDIRecord.create({
@@ -989,7 +1022,7 @@ export class AppService {
               signatoryPhoto: this.pick(body, ['Authorized Signatory Photo']) || null,
               otpVerified: Boolean(this.pick(body, ['Inspector OTP'])),
               completedAt: new Date(),
-              status: 'Ready for Installation',
+              status: pdiStatusAfter,
             },
           })
 
@@ -1012,7 +1045,7 @@ export class AppService {
       })
     }
 
-    await this.prisma.vehicle.update({ where: { id: vehicle.id }, data: { status: module.statusAfter } })
+    await this.prisma.vehicle.update({ where: { id: vehicle.id }, data: { status: pdiStatusAfter } })
     return this.createSummaryWorkItem(module.key, {
       module,
       customerId: vehicle.customerId,
@@ -1029,9 +1062,10 @@ export class AppService {
   private async createInstallationWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
     const customer = await this.createCustomer(body)
     const vehicle = await this.requireVehicle(body)
-    this.requireVehicleWorkflowState(vehicle.status, ['Ready for Installation', 'Allocated to Customer'], 'Complete PDI before creating the installation certificate')
+    this.requireVehicleWorkflowState(vehicle.status, ['Pending Installation', 'Ready for Installation'], 'Complete PDI before creating the installation certificate')
     const owner = await this.prisma.user.findFirst({ where: { role: 'sales' } })
     const existing = await this.prisma.installationCertificate.findUnique({ where: { vehicleId: vehicle.id } })
+    const installationStatusAfter = 'Allocated to Customer'
     const certificate =
       existing
         ? await this.prisma.installationCertificate.update({
@@ -1043,7 +1077,7 @@ export class AppService {
               signatureData: this.pick(body, ['Digital Signature']) || null,
               handoverPhoto: this.pick(body, ['Handover Photo']) || null,
               generatedPdf: `installation-${vehicle.code}.pdf`,
-              status: module.statusAfter,
+              status: installationStatusAfter,
             },
           })
         : await this.prisma.installationCertificate.create({
@@ -1056,18 +1090,25 @@ export class AppService {
               signatureData: this.pick(body, ['Digital Signature']) || null,
               handoverPhoto: this.pick(body, ['Handover Photo']) || null,
               generatedPdf: `installation-${vehicle.code}.pdf`,
-              status: module.statusAfter,
+              status: installationStatusAfter,
             },
           })
     await this.writeGeneratedPdf('installation', certificate.generatedPdf ?? `installation-${vehicle.code}.pdf`, 'Installation Certificate', [
       `Certificate No: ${certificate.certificateNo}`,
+      `Dealer Code: ${this.pick(body, ['Dealer Code'])}`,
+      `OSM No: ${this.pick(body, ['OSM Number'])}`,
+      `Dealer Name: ${this.pick(body, ['Dealer Name'])}`,
+      `Dealer City: ${this.pick(body, ['Dealer City'])}`,
       `Vehicle Code: ${vehicle.code}`,
+      `Tractor No: ${this.pick(body, ['Tractor Number']) || vehicle.chassisNo}`,
       `Vehicle Model: ${vehicle.model}`,
+      `TAFE Invoice No: ${this.pick(body, ['TAFE Invoice Number'])}`,
       `Customer: ${customer.name}`,
       `Mobile: ${customer.mobile}`,
+      `Address: ${customer.address}`,
       `Status: ${certificate.status}`,
     ])
-    await this.prisma.vehicle.update({ where: { id: vehicle.id }, data: { customerId: customer.id, status: module.statusAfter } })
+    await this.prisma.vehicle.update({ where: { id: vehicle.id }, data: { customerId: customer.id, status: installationStatusAfter } })
     return this.createSummaryWorkItem(module.key, {
       module,
       customerId: customer.id,
@@ -1083,7 +1124,7 @@ export class AppService {
 
   private async createDeliveryWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
     const vehicle = await this.requireVehicle(body)
-    this.requireVehicleWorkflowState(vehicle.status, ['Allocated to Customer', 'Delivered'], 'Complete Installation Certificate before creating the delivery sheet')
+    this.requireVehicleWorkflowState(vehicle.status, ['Allocated to Customer', 'Delivered'], 'Complete PDI before creating Sales History')
     const customer = vehicle.customerId ? await this.prisma.customer.findUnique({ where: { id: vehicle.customerId } }) : await this.createCustomer(body)
     if (!customer) throw new BadRequestException('Delivery requires a customer')
     const owner = await this.prisma.user.findFirst({ where: { role: 'sales' } })
@@ -1121,7 +1162,7 @@ export class AppService {
         status: module.statusAfter,
       },
     })
-    await this.writeGeneratedPdf('delivery', delivery.receiptPdf ?? `delivery-${vehicle.code}.pdf`, 'Customer Delivery Receipt', [
+    await this.writeGeneratedPdf('delivery', delivery.receiptPdf ?? `delivery-${vehicle.code}.pdf`, 'Sales History Receipt', [
       `Sheet No: ${delivery.sheetNo}`,
       `Vehicle Code: ${vehicle.code}`,
       `Customer: ${customer.name}`,
@@ -1145,7 +1186,7 @@ export class AppService {
 
   private async createSafetyWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
     const vehicle = await this.requireVehicle(body)
-    this.requireVehicleWorkflowState(vehicle.status, ['Delivered', 'Safety Completed'], 'Finalize the Customer Delivery Sheet before saving safety acknowledgement')
+    this.requireVehicleWorkflowState(vehicle.status, ['Delivered', 'Safety Completed'], 'Finalize Sales History before saving safety acknowledgement')
     const record = await this.prisma.safetyAcknowledgement.upsert({
       where: { vehicleId: vehicle.id },
       update: {
@@ -1180,13 +1221,13 @@ export class AppService {
 
   private async createInsuranceWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
     const vehicle = await this.requireVehicle(body)
-    this.requireVehicleWorkflowState(vehicle.status, ['Safety Acknowledged', 'Safety Completed', 'Insured'], 'Complete Safety & Maintenance before adding insurance')
+    this.requireVehicleWorkflowState(vehicle.status, ['RTO Verification In Progress', 'RTO Filed', 'Insured'], 'Complete RTO before adding insurance')
     const policyNumber = this.pick(body, ['Policy Number'])
-    const provider = this.pick(body, ['Provider'])
+    const provider = this.pick(body, ['Company', 'Provider'])
     const premiumAmount = this.parseCurrency(this.pick(body, ['Premium Amount']))
-    const startDate = this.parseDate(this.pick(body, ['Start Date']))
-    const endDate = this.parseDate(this.pick(body, ['End Date']))
-    const coverageType = this.pick(body, ['Coverage Type'])
+    const startDate = this.parseDate(this.pick(body, ['Start Cover Date', 'Start Date']))
+    const endDate = this.parseDate(this.pick(body, ['End Cover Date', 'End Date']))
+    const coverageType = this.pick(body, ['Coverage Ratio', 'Coverage Type'])
     if (!policyNumber || !provider || !premiumAmount || !startDate || !endDate || !coverageType) {
       throw new BadRequestException('Complete the policy number, provider, premium, dates, and coverage type')
     }
@@ -1198,7 +1239,7 @@ export class AppService {
         premiumAmount,
         startDate,
         endDate,
-        nominee: this.pick(body, ['Nominee']) || null,
+        nominee: this.pick(body, ['Contact Number']) || null,
         coverageType,
         status: module.statusAfter,
       },
@@ -1209,7 +1250,7 @@ export class AppService {
         premiumAmount,
         startDate,
         endDate,
-        nominee: this.pick(body, ['Nominee']) || null,
+        nominee: this.pick(body, ['Contact Number']) || null,
         coverageType,
         status: module.statusAfter,
       },
@@ -1221,7 +1262,7 @@ export class AppService {
       vehicleId: vehicle.id,
       ownerId: actor?.id,
       amount: premiumAmount,
-      due: this.pick(body, ['End Date']) || '',
+      due: this.pick(body, ['End Cover Date', 'End Date']) || '',
       payload: body,
       documentNames: this.defaultDocuments('insurance'),
       status: 'Complete',
@@ -1231,7 +1272,7 @@ export class AppService {
 
   private async createRtoWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
     const vehicle = await this.requireVehicle(body)
-    this.requireVehicleWorkflowState(vehicle.status, ['Insured', 'RTO Verification In Progress', 'RTO Filed'], 'Complete Insurance before filing the RTO packet')
+    this.requireVehicleWorkflowState(vehicle.status, ['Safety Acknowledged', 'Safety Completed', 'RTO Verification In Progress', 'RTO Filed'], 'Complete Safety & Maintenance before filing the RTO packet')
     const customer = vehicle.customerId ? await this.prisma.customer.findUnique({ where: { id: vehicle.customerId } }) : await this.createCustomer(body)
     if (!customer) throw new BadRequestException('RTO requires an allocated customer')
     const packet = await this.prisma.rTORecord.upsert({
@@ -1274,7 +1315,7 @@ export class AppService {
 
   private async createAccountsWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
     const vehicle = await this.requireVehicle(body)
-    this.requireVehicleWorkflowState(vehicle.status, ['RTO Verification In Progress', 'RTO Filed', 'Financially Closed'], 'RTO should be filed before closing accounts')
+    this.requireVehicleWorkflowState(vehicle.status, ['Insured', 'Financially Closed'], 'Insurance should be completed before closing accounts')
     const customer = vehicle.customerId ? await this.prisma.customer.findUnique({ where: { id: vehicle.customerId } }) : await this.createCustomer(body)
     if (!customer) throw new BadRequestException('Accounts requires a customer')
     const owner = await this.prisma.user.findFirst({ where: { role: 'accounts' } })
@@ -1283,12 +1324,12 @@ export class AppService {
       update: {
         customerId: customer.id,
         ownerId: actor?.id ?? owner?.id,
-        bookingAmount: this.parseCurrency(this.pick(body, ['Booking Amount'])),
-        loanDisbursal: this.parseCurrency(this.pick(body, ['Loan Disbursal'])),
-        cashReceipt: this.parseCurrency(this.pick(body, ['Cash Receipt'])),
-        discountApproval: this.parseCurrency(this.pick(body, ['Discount Approval'])),
-        finalBalance: this.parseCurrency(this.pick(body, ['Final Balance'])),
-        closureDate: this.parseDate(this.pick(body, ['Deal Closure Date'])),
+        bookingAmount: this.parseCurrency(this.pick(body, ['Deal Value', 'Total Deal Value'])),
+        loanDisbursal: null,
+        cashReceipt: this.parseCurrency(this.pick(body, ['Closed Value'])),
+        discountApproval: null,
+        finalBalance: this.parseCurrency(this.pick(body, ['Balance', 'Final Balance'])),
+        closureDate: new Date(),
         status: module.statusAfter,
       },
       create: {
@@ -1296,12 +1337,12 @@ export class AppService {
         vehicleId: vehicle.id,
         customerId: customer.id,
         ownerId: actor?.id ?? owner?.id,
-        bookingAmount: this.parseCurrency(this.pick(body, ['Booking Amount'])),
-        loanDisbursal: this.parseCurrency(this.pick(body, ['Loan Disbursal'])),
-        cashReceipt: this.parseCurrency(this.pick(body, ['Cash Receipt'])),
-        discountApproval: this.parseCurrency(this.pick(body, ['Discount Approval'])),
-        finalBalance: this.parseCurrency(this.pick(body, ['Final Balance'])),
-        closureDate: this.parseDate(this.pick(body, ['Deal Closure Date'])),
+        bookingAmount: this.parseCurrency(this.pick(body, ['Deal Value', 'Total Deal Value'])),
+        loanDisbursal: null,
+        cashReceipt: this.parseCurrency(this.pick(body, ['Closed Value'])),
+        discountApproval: null,
+        finalBalance: this.parseCurrency(this.pick(body, ['Balance', 'Final Balance'])),
+        closureDate: new Date(),
         status: module.statusAfter,
       },
     })
@@ -1312,7 +1353,7 @@ export class AppService {
       vehicleId: vehicle.id,
       ownerId: actor?.id ?? owner?.id,
       amount: deal.finalBalance ?? 0,
-      due: this.pick(body, ['Deal Closure Date']) || '',
+      due: this.pick(body, ['Balance', 'Final Balance']) || '',
       payload: body,
       documentNames: this.defaultDocuments('accounts'),
       status: 'Complete',
@@ -1322,7 +1363,7 @@ export class AppService {
 
   private async createAtsWorkflow(module: any, body: PlainBody, actor?: AuthUser) {
     const vehicle = await this.requireVehicle(body)
-    this.requireVehicleWorkflowState(vehicle.status, ['Financially Closed', 'Closed'], 'Complete Accounts before generating ATS')
+    this.requireVehicleWorkflowState(vehicle.status, ['Financially Closed', 'ATS Generated', 'Closed'], 'Complete Accounts before generating ATS')
     const deal = await this.prisma.accountsDeal.findUnique({ where: { vehicleId: vehicle.id } })
     if (!deal) throw new BadRequestException('Create and close the accounts deal first')
     const owner = await this.prisma.user.findFirst({ where: { role: 'accounts' } })
@@ -1414,7 +1455,7 @@ export class AppService {
       ownerId: actor?.id,
       due: '',
       payload: body,
-      documentNames: this.defaultDocuments('exchange'),
+      documentNames: this.exchangeDocumentsFor(body),
       status: 'In Review',
       exchangeRecordId: record.id,
       amount: record.offeredPrice ?? 0,
@@ -1506,14 +1547,14 @@ export class AppService {
 
   private defaultDocuments(key: string) {
     const docs: Record<string, string[]> = {
-      purchase: ['Company Invoice PDF', 'E-Way Bill', 'LR Receipt'],
+      purchase: ['Company Invoice PDF', 'E-Way Bill', 'LR Copy / Receipt'],
       pdi: ['Inspector Photo', 'Signed PDI PDF', 'Defect Photos'],
       installation: ['Certificate PDF', 'Customer Signature', 'Authorized Signatory'],
-      delivery: ['Aadhaar Card', 'PAN Card', 'Customer Photo', 'Delivery Photo', 'Delivery Challan', 'Gate Pass', 'Tractor Invoice', 'Quotation', 'Video Byte'],
-      exchange: ['RC Card Tractor', 'Form 28', 'Form 29', 'Exchange Agreement'],
+      delivery: ['Customer Agreement', 'Voucher', 'Customer History Sheet', 'Aadhaar Card', 'PAN Card', 'Customer Details Form', 'Delivery Challan', 'Gate Pass', 'Tractor Invoice', 'Quotation', 'Delivery Photo', 'Video Byte'],
+      exchange: ['Insurance Copy', 'Tractor RC', 'Old Tractor Agreement Copy', 'Old Tractor Stock Proof', 'Accounts Ledger Copy', 'Old Tractor Gate Pass', 'Form 28', 'Form 29', 'Form 30', 'Form 35'],
       safety: ['Acknowledgement PDF', 'Maintenance Guide'],
       insurance: ['Insurance Copy', 'Premium Receipt'],
-      rto: ['RC Card', 'Aadhaar Card', 'Form 19-22', 'GST Invoice', 'Bonafide Cert', 'Bank Form 35', 'Passport Photo'],
+      rto: ['RC Card', 'Aadhaar Card', 'Form 19-22', 'GST Invoice', 'Bonafide Cert', 'Bank Form 35', 'Passport Photo', 'Shaddow Trace'],
       accounts: ['Receipt', 'Loan Sanction', 'Ledger PDF'],
       ats: ['ATS PDF', 'Ledger Copy', 'Approval Note'],
       service: ['Job Card', 'Service Photos', 'Customer Acknowledgement'],
@@ -1522,15 +1563,39 @@ export class AppService {
     return docs[key] ?? ['Generated Form', 'Approval Proof']
   }
 
+  private exchangeDocumentsFor(body: PlainBody) {
+    const docs = this.defaultDocuments('exchange')
+    return String(body['Trailer Attached'] ?? '').toLowerCase() === 'true' ? [...docs, 'Trailer RC'] : docs
+  }
+
   private defaultSafetyTopics() {
     return ['PTO safety', 'Hydraulic safety', 'Daily oil check', 'Tyre pressure', 'Service interval', 'Warranty precautions']
   }
 
   private presentModule(row: any) {
+    const overrides: Record<string, Partial<{ prs: string; statusAfter: string; workflow: string[] }>> = {
+      purchase: {
+        statusAfter: 'Pending PDI',
+        workflow: ['Validate IRN, acknowledgement, invoice, and e-way bill', 'Capture billed-to receiver and consigner GST details', 'Attach LR copy and logistics receipt values', 'Generate one vehicle record per tractor', 'Set vehicle status to Pending PDI'],
+      },
+      pdi: {
+        prs: 'Module 2',
+        statusAfter: 'Pending Installation',
+        workflow: ['Select vehicle created from purchase invoice', 'Record report header and job card number', 'Mark each checkpoint observation', 'Capture action taken for exceptions', 'Verify OTP', 'Move vehicle to Pending Installation'],
+      },
+      installation: {
+        prs: 'Module 3',
+        statusAfter: 'Allocated to Customer',
+        workflow: ['Select vehicle cleared by PDI', 'Capture dealer, OSM and tractor details', 'Capture customer name and full address blocks', 'Verify OTP', 'Capture customer signature and dealer stamp', 'Generate certificate', 'Move vehicle to Allocated to Customer'],
+      },
+    }
+    const parsedWorkflow = JSON.parse(row.workflow || '[]')
+    const override = overrides[row.key] ?? {}
     return {
       ...row,
+      ...override,
       fields: JSON.parse(row.fields || '[]'),
-      workflow: JSON.parse(row.workflow || '[]'),
+      workflow: override.workflow ?? parsedWorkflow,
       checklist: JSON.parse(row.checklist || '[]'),
     }
   }

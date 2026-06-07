@@ -4,7 +4,7 @@ import api from '../api/client'
 import PageHeader from '../components/ui/PageHeader'
 import StatusPill from '../components/ui/StatusPill'
 
-const flowOrder = ['purchase', 'pdi', 'installation', 'delivery', 'safety', 'insurance', 'rto', 'accounts', 'ats', 'service', 'exchange']
+const flowOrder = ['purchase', 'pdi', 'installation', 'delivery', 'safety', 'rto', 'insurance', 'accounts', 'ats', 'service', 'exchange']
 
 const sampleFlow: Record<string, { intro: string; prerequisite: string; action: string; data: Array<[string, string]>; docs: string[]; next: string }> = {
   purchase: {
@@ -26,7 +26,7 @@ const sampleFlow: Record<string, { intro: string; prerequisite: string; action: 
       ['Model', 'TAFE 7502 DI'],
     ],
     docs: ['Company_Invoice_PI-2026-0001.pdf', 'EWayBill_EWB-260505-001.pdf', 'LR_Receipt_260505.pdf'],
-    next: 'Go to Pre-Delivery Inspection and use the same engine/chassis values.',
+    next: 'Go to Pre-Delivery Inspection and inspect the same tractor before installation.',
   },
   pdi: {
     intro: 'Inspect the same vehicle created in Purchase Invoices.',
@@ -42,11 +42,11 @@ const sampleFlow: Record<string, { intro: string; prerequisite: string; action: 
       ['Inspector OTP', '123456'],
     ],
     docs: ['Inspector_Photo_260505.jpg', 'Signed_PDI_260505.pdf', 'Checklist_Closeout_260505.pdf'],
-    next: 'Mark the checklist complete, then move to Installation Certificate.',
+    next: 'Mark the checklist complete, then open Installation Certificate for the same tractor.',
   },
   installation: {
     intro: 'Register the buyer and bind the vehicle to that customer.',
-    prerequisite: 'Vehicle must be in Ready for Installation after PDI completion.',
+    prerequisite: 'Vehicle must be cleared by PDI first.',
     action: 'Pick the ready vehicle, search an existing customer or use Add Customer to clear the form for a fresh registration, send OTP, upload the customer confirmation signature, optionally upload the handover photo, then generate the certificate.',
     data: [
       ['Customer Name', 'Harish Kumar'],
@@ -63,12 +63,12 @@ const sampleFlow: Record<string, { intro: string; prerequisite: string; action: 
       ['Handover Photo', 'handover_harish_260505.jpg'],
     ],
     docs: ['Customer_Signature_Harish.png', 'Installation_Certificate_Harish.pdf', 'Authorized_Signature.png'],
-    next: 'After this, open Customer Delivery Sheet for the same customer.',
+    next: 'After this, open Sales History for the same tractor.',
   },
   delivery: {
-    intro: 'Finish the handover and capture the final customer delivery confirmation.',
+    intro: 'Finish the sales history file with customer agreement, KYC, voucher, sheets, gate pass, invoice, quotation, delivery photo, and video byte.',
     prerequisite: 'Vehicle must already be allocated to the customer from Installation Certificate.',
-    action: 'Choose the allocated vehicle, save Section 01 first, upload all required documents in Section 02, save Section 03 with customer signature and agreement, then finalize. After finalization the page locks into view mode until Edit is pressed.',
+    action: 'Choose the allocated vehicle, fill customer history details, upload all required documents, generate the gate pass from the popup, then finalize Sales History.',
     data: [
       ['Customer Name', 'Harish Kumar'],
       ['Vehicle Details', 'Use the generated vehicle code from Purchase Invoices'],
@@ -78,7 +78,7 @@ const sampleFlow: Record<string, { intro: string; prerequisite: string; action: 
       ['Agreement Confirmation', 'Checked'],
     ],
     docs: ['Aadhaar_Harish.pdf', 'PAN_Harish.pdf', 'Customer_Photo_HK.jpg', 'Delivery_Photo_Harish.jpg', 'Delivery_Challan_HK.pdf', 'GatePass_HK.pdf', 'Tractor_Invoice_HK.pdf', 'Quotation_HK.pdf', 'Customer_Byte_HK.mp4'],
-    next: 'Once delivered, continue with Safety, Insurance, RTO, and Accounts.',
+    next: 'Once Sales History is finalized, continue with Safety, RTO, Insurance, and Accounts.',
   },
   safety: {
     intro: 'Capture safety briefing acknowledgement from the same customer.',
@@ -93,11 +93,11 @@ const sampleFlow: Record<string, { intro: string; prerequisite: string; action: 
       ['OTP Verification', '123456'],
     ],
     docs: ['Safety_Acknowledgement_HK.pdf', 'Maintenance_Guide_HK.pdf'],
-    next: 'Then add the insurance policy details.',
+    next: 'Then prepare the RTO document packet.',
   },
   insurance: {
-    intro: 'Add the vehicle policy after delivery confirmation.',
-    prerequisite: 'Safety acknowledgement should be recorded first.',
+    intro: 'Add the vehicle policy after the RTO packet is prepared.',
+    prerequisite: 'RTO should already be in verification / filed state.',
     action: 'Select the customer vehicle, enter policy details with calendar dates, add nominee details, then save the insurance record. After submit the page locks until Edit Policy is pressed.',
     data: [
       ['Policy Number', 'POL-TAFE-260506-01'],
@@ -112,11 +112,11 @@ const sampleFlow: Record<string, { intro: string; prerequisite: string; action: 
       ['Coverage Type', 'Comprehensive'],
     ],
     docs: ['Insurance_Copy_HK.pdf', 'Premium_Receipt_HK.pdf'],
-    next: 'After insurance, file the RTO packet.',
+    next: 'After insurance, continue to Accounts.',
   },
   rto: {
-    intro: 'Create the RTO packet for the insured vehicle, then upload and verify the document set.',
-    prerequisite: 'Delivery and insurance should already be completed.',
+    intro: 'Create the RTO packet after safety acknowledgement, then upload and verify the document set.',
+    prerequisite: 'Safety acknowledgement should already be completed.',
     action: 'Open `/rto`, select the customer or vehicle at the top, click Create RTO Record first, then fill packet details and upload files card by card. After Submit for Verification the packet locks into view mode until Edit RTO Packet is pressed.',
     data: [
       ['Select Customer', 'Harish Kumar'],
@@ -127,18 +127,18 @@ const sampleFlow: Record<string, { intro: string; prerequisite: string; action: 
       ['Form 21', 'F21-260506-001'],
       ['Form 22', 'F22-260506-001'],
       ['Tax Receipt', 'TAX-260506-778'],
-      ['PAN', 'AHKPK4123Q'],
+      ['Bonafide Certificate Number', 'BC-260506-09'],
       ['Dealer Authorization', 'DA-TAFE-051'],
       ['RTO Clerk', 'Murugan'],
       ['Verification Remarks', 'Packet complete and ready for clerk verification'],
       ['RTO Submission Deadline', '2026-05-10'],
     ],
-    docs: ['RC_Request_Form.pdf', 'Aadhaar_Harish.pdf', 'Form_19_22_Set.pdf', 'GST_Invoice_PI-2026-0001.pdf', 'Bonafide_Cert_HK.pdf', 'Bank_Form_35_HK.pdf', 'Passport_Photo_HK.jpg'],
-    next: 'Create the RTO record first, upload files, then Submit for Verification. The next sales-flow module after RTO is Accounts.',
+    docs: ['RC_Request_Form.pdf', 'Aadhaar_Harish.pdf', 'Form_19_22_Set.pdf', 'GST_Invoice_PI-2026-0001.pdf', 'Bonafide_Cert_HK.pdf', 'Bank_Form_35_HK.pdf', 'Passport_Photo_HK.jpg', 'Shaddow_Trace_HK.pdf'],
+    next: 'Create the RTO record first, upload files, then Submit for Verification. The next sales-flow module after RTO is Insurance.',
   },
   accounts: {
     intro: 'Close the finance side after the customer and vehicle are fully registered.',
-    prerequisite: 'RTO should already be in verification / filed state before final accounts closeout.',
+    prerequisite: 'Insurance should already be completed before final accounts closeout.',
     action: 'Open Accounts for the selected vehicle, enter payment breakup, choose payment mode, upload proof for any non-cash payment, and let Final Balance auto-calculate. After submit the settlement locks until Edit Settlement is pressed.',
     data: [
       ['Customer Vehicle', 'Use the selected vehicle from tracker or dropdown'],
@@ -229,7 +229,7 @@ export default function GuidedFlow() {
           <div className="mt-4 grid gap-4 lg:grid-cols-4">
             <div className="rounded border border-outline-variant bg-surface-container-low p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Step Order</p>
-              <p className="mt-2 text-sm text-on-surface-variant">Purchase Invoices {'>'} PDI {'>'} Installation {'>'} Delivery {'>'} Safety {'>'} Insurance {'>'} RTO {'>'} Accounts {'>'} ATS</p>
+              <p className="mt-2 text-sm text-on-surface-variant">Purchase Invoices {'>'} PDI {'>'} Installation {'>'} Sales History {'>'} Safety {'>'} RTO {'>'} Insurance {'>'} Accounts {'>'} ATS</p>
             </div>
             <div className="rounded border border-outline-variant bg-surface-container-low p-4">
               <p className="text-xs font-bold uppercase tracking-wider text-on-surface-variant">Important Rule</p>

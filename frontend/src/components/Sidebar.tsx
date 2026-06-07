@@ -4,7 +4,22 @@ import api from '../api/client'
 import { canAccess } from '../lib/rbac'
 import { useAuthStore } from '../store/auth.store'
 
-const flowOrder = ['purchase', 'pdi', 'installation', 'delivery', 'exchange', 'safety', 'insurance', 'rto', 'accounts', 'ats']
+const flowOrder = ['purchase', 'pdi', 'installation', 'delivery', 'exchange', 'safety', 'rto', 'insurance', 'accounts', 'ats']
+
+const defaultModules = [
+  { key: 'purchase', title: 'Purchase Invoices', route: '/purchase-invoices', icon: 'receipt_long' },
+  { key: 'pdi', title: 'Pre-Delivery Inspection', route: '/pdi', icon: 'verified' },
+  { key: 'installation', title: 'Installation Certificate', route: '/installation', icon: 'assignment_turned_in' },
+  { key: 'delivery', title: 'Sales History', route: '/delivery', icon: 'history_edu' },
+  { key: 'exchange', title: 'Exchange Registry', route: '/exchange', icon: 'swap_horiz' },
+  { key: 'safety', title: 'Safety & Maintenance', route: '/safety', icon: 'construction' },
+  { key: 'rto', title: 'RTO Documents', route: '/rto', icon: 'description' },
+  { key: 'insurance', title: 'Insurance Management', route: '/insurance', icon: 'policy' },
+  { key: 'accounts', title: 'Accounts Module', route: '/accounts', icon: 'account_balance' },
+  { key: 'ats', title: 'ATS Charge Sheet', route: '/ats', icon: 'assignment_turned_in' },
+  { key: 'service', title: 'Service Operations', route: '/service', icon: 'build' },
+  { key: 'admin', title: 'Admin Control Center', route: '/admin', icon: 'admin_panel_settings' },
+]
 
 function sortByFlow(items: any[]) {
   return [...items].sort((a, b) => {
@@ -16,10 +31,18 @@ function sortByFlow(items: any[]) {
 
 export default function Sidebar() {
   const { user } = useAuthStore()
-  const [modules, setModules] = useState<any[]>([])
+  const [modules, setModules] = useState<any[]>(defaultModules)
 
   useEffect(() => {
-    api.get('/modules').then(({ data }) => setModules(data))
+    api.get('/modules')
+      .then(({ data }) => {
+        const moduleMap = new Map(defaultModules.map((item) => [item.key, item]))
+        for (const item of data ?? []) {
+          moduleMap.set(item.key, { ...item, ...moduleMap.get(item.key) })
+        }
+        setModules(Array.from(moduleMap.values()))
+      })
+      .catch(() => setModules(defaultModules))
   }, [])
 
   return (

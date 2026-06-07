@@ -37,8 +37,8 @@ type DashboardPayload = {
 }
 
 const pipelineLabels = [
-  { key: 'pending', label: 'Pending PDI', statuses: ['Pending PDI'] },
-  { key: 'ready', label: 'Ready for Install', statuses: ['Ready for Installation'] },
+  { key: 'ready', label: 'Pending PDI', statuses: ['Pending PDI'] },
+  { key: 'pending', label: 'Pending Install', statuses: ['Pending Installation', 'Ready for Installation'] },
   { key: 'allocated', label: 'Allocated', statuses: ['Allocated to Customer'] },
   { key: 'delivered', label: 'Delivered', statuses: ['Delivered', 'RTO Filed'] },
 ]

@@ -11,7 +11,7 @@ import { fileToUploadPayload } from '../lib/upload'
 
 const mobilePattern = /^\d{10}$/
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-const flowOrder = ['purchase', 'pdi', 'installation', 'delivery', 'safety', 'insurance', 'rto', 'accounts', 'ats', 'service', 'exchange']
+const flowOrder = ['purchase', 'installation', 'pdi', 'delivery', 'safety', 'rto', 'insurance', 'accounts', 'ats', 'service', 'exchange']
 
 function isDateField(field: string) {
   return /date|deadline/i.test(field)

@@ -19,6 +19,8 @@ import SearchResults from './pages/SearchResults'
 import VehicleFlowTracker from './pages/VehicleFlowTracker'
 import Profile from './pages/Profile'
 import GuidedFlow from './pages/GuidedFlow'
+import SafetyDosDonts from './pages/SafetyDosDonts'
+import SafetyMaintenanceGuide from './pages/SafetyMaintenanceGuide'
 import { useAuthStore } from './store/auth.store'
 import { canAccess } from './lib/rbac'
 
@@ -57,6 +59,8 @@ export default function App() {
         <Route path="/delivery" element={<ProtectedRoute moduleKey="delivery"><CustomerDelivery /></ProtectedRoute>} />
         <Route path="/exchange" element={<ProtectedRoute moduleKey="exchange"><Exchange /></ProtectedRoute>} />
         <Route path="/safety" element={<ProtectedRoute moduleKey="safety"><SafetyMaintenance /></ProtectedRoute>} />
+        <Route path="/safety/dos-donts" element={<ProtectedRoute moduleKey="safety"><SafetyDosDonts /></ProtectedRoute>} />
+        <Route path="/safety/maintenance-guide" element={<ProtectedRoute moduleKey="safety"><SafetyMaintenanceGuide /></ProtectedRoute>} />
         <Route path="/insurance" element={<ProtectedRoute moduleKey="insurance"><Insurance /></ProtectedRoute>} />
         <Route path="/rto" element={<ProtectedRoute moduleKey="rto"><RTODocuments /></ProtectedRoute>} />
         <Route path="/accounts" element={<ProtectedRoute moduleKey="accounts"><Accounts /></ProtectedRoute>} />

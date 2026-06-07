@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: tafe-dms-api
+    runtime: node
+    rootDir: backend
+    plan: starter
+    buildCommand: npm install && npm run prisma:generate && npm run build
+    preDeployCommand: npm run prisma:push && npm run prisma:seed
+    startCommand: npm run start
+    disk:
+      name: tafe-dms-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        value: file:/var/data/dev.db
+      - key: FRONTEND_URL
+        value: https://tafe-dms.onrender.com
+
+  - type: static
+    name: tafe-dms
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_BASE_URL
+        value: https://tafe-dms-api.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

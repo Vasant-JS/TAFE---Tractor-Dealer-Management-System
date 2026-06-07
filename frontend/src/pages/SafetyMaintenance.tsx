@@ -48,6 +48,7 @@ export default function SafetyMaintenance() {
   const [acknowledged, setAcknowledged] = useState(false)
   const [otp, setOtp] = useState('')
   const [otpSent, setOtpSent] = useState(false)
+  const [dosDontsViewed, setDosDontsViewed] = useState(false)
   const [loading, setLoading] = useState(false)
   const [editUnlocked, setEditUnlocked] = useState(false)
 
@@ -74,14 +75,20 @@ export default function SafetyMaintenance() {
   const isEditing = !isFinalized || editUnlocked
 
   useEffect(() => {
+    const alreadyVerified = Boolean(payload['OTP Verification']) || Boolean(currentRow)
     setEditUnlocked(false)
     setLanguage(String(payload['Language Preference'] ?? 'English'))
-    setAcknowledged(Boolean(payload['Acknowledged']) || Boolean(payload['OTP Verification']) || Boolean(currentRow))
-    setOtp(Boolean(payload['OTP Verification']) || Boolean(currentRow) ? '123456' : '')
-    setOtpSent(Boolean(payload['OTP Verification']) || Boolean(currentRow))
+    setAcknowledged(Boolean(payload['Acknowledged']) || alreadyVerified)
+    setOtp(alreadyVerified ? '123456' : '')
+    setOtpSent(alreadyVerified)
+    setDosDontsViewed(alreadyVerified)
   }, [payload, currentRow, selectedVehicleId])
 
   const sendOtp = async () => {
+    if (!dosDontsViewed) {
+      toast.error("View Do's & Don'ts before sending OTP")
+      return
+    }
     if (!selectedVehicle?.customer?.mobile) {
       toast.error('Customer mobile is required before OTP verification')
       return
@@ -134,6 +141,13 @@ export default function SafetyMaintenance() {
             <p className="mt-1 text-sm italic text-slate-500">Operator awareness and equipment briefing workflow</p>
           </div>
           <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => window.open('/safety/maintenance-guide', '_blank', 'noopener,noreferrer')}
+              className="rounded border border-[#1b5e20] bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-[#1b5e20]"
+            >
+              Open Maintenance Document
+            </button>
             <span className={`rounded px-3 py-2 text-[10px] font-bold uppercase tracking-wider ${isFinalized ? 'bg-[#1b5e20] text-white' : 'bg-amber-100 text-amber-900'}`}>
               {isFinalized ? 'Safety Step Finished' : 'Safety In Progress'}
             </span>
@@ -253,15 +267,32 @@ export default function SafetyMaintenance() {
               <span className="material-symbols-outlined text-4xl text-green-500">vibration</span>
               <h3 className="font-display text-[22px] font-semibold">Final OTP Verification</h3>
               <p className="text-xs text-slate-400">A 6-digit code is sent to the registered customer mobile before finalizing.</p>
+              <button
+                type="button"
+                onClick={() => {
+                  setDosDontsViewed(true)
+                  window.open('/safety/dos-donts', '_blank', 'noopener,noreferrer')
+                }}
+                className="w-full rounded border border-green-500/60 bg-green-500/10 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-green-200 hover:bg-green-500/20"
+              >
+                View Do's & Don'ts
+              </button>
               {isEditing ? (
-                <button onClick={sendOtp} className="w-full rounded border border-slate-700 bg-slate-800 px-4 py-3 text-[11px] font-bold uppercase tracking-wider">
-                  {otpSent ? 'Resend OTP' : 'Send OTP'}
+                <button
+                  onClick={sendOtp}
+                  disabled={!dosDontsViewed}
+                  className="w-full rounded border border-slate-700 bg-slate-800 px-4 py-3 text-[11px] font-bold uppercase tracking-wider disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {dosDontsViewed ? (otpSent ? 'Resend OTP' : 'Send OTP') : "View Do's & Don'ts First"}
                 </button>
               ) : (
                 <div className="w-full rounded border border-slate-700 bg-slate-800 px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-green-400">
                   OTP Verification Locked
                 </div>
               )}
+              {isEditing && !dosDontsViewed ? (
+                <p className="text-[10px] font-bold uppercase tracking-widest text-amber-300">View Do's & Don'ts to unlock OTP</p>
+              ) : null}
               <input value={otp} disabled={!isEditing} onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))} className="h-12 w-full rounded bg-slate-800 px-4 text-center font-mono text-xl outline-none ring-1 ring-slate-700 focus:ring-green-500 disabled:text-slate-400" placeholder="000000" />
               {otp.length === 6 ? <p className="text-[10px] font-bold uppercase tracking-widest text-green-500">Verified Successfully</p> : null}
             </div>
@@ -282,7 +313,7 @@ export default function SafetyMaintenance() {
         </div>
         <div className="flex gap-4">
           <button onClick={() => navigate('/delivery')} className="rounded border border-slate-300 px-6 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700">Back</button>
-          <button onClick={() => navigate('/insurance')} disabled={!isFinalized} className="rounded border border-slate-300 px-6 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400">Next Step</button>
+          <button onClick={() => navigate('/rto')} disabled={!isFinalized} className="rounded border border-slate-300 px-6 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400">Next Step</button>
           <button onClick={finalize} disabled={loading || !acknowledged || otp.length !== 6 || !isEditing} className="rounded bg-[#1b5e20] px-8 py-2 text-[11px] font-bold uppercase tracking-wider text-white disabled:opacity-60">
             {loading ? 'Finalizing...' : isFinalized && !isEditing ? 'Safety Locked' : 'Finalize Handover'}
           </button>

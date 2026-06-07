@@ -4,7 +4,7 @@ import toast from 'react-hot-toast'
 import api from '../api/client'
 import { fileToUploadPayload } from '../lib/upload'
 
-const templateDocuments = ['RC Card', 'Aadhaar Card', 'Form 19-22', 'GST Invoice', 'Bonafide Cert', 'Bank Form 35', 'Passport Photo']
+const templateDocuments = ['RC Card', 'Aadhaar Card', 'Form 19-22', 'GST Invoice', 'Bonafide Cert', 'Bank Form 35', 'Passport Photo', 'Shaddow Trace']
 
 const iconByDoc: Record<string, string> = {
   'RC Card': 'badge',
@@ -14,6 +14,7 @@ const iconByDoc: Record<string, string> = {
   'Bonafide Cert': 'approval',
   'Bank Form 35': 'account_balance',
   'Passport Photo': 'account_box',
+  'Shaddow Trace': 'content_paste_search',
 }
 
 const helpByDoc: Record<string, string> = {
@@ -24,6 +25,7 @@ const helpByDoc: Record<string, string> = {
   'Bonafide Cert': 'Local residence verification from competent authority.',
   'Bank Form 35': 'Hypothecation termination/addition for financed vehicles.',
   'Passport Photo': 'Recent passport size photograph of the applicant.',
+  'Shaddow Trace': 'RTO shadow trace / chassis imprint support document.',
 }
 
 const fieldsByDoc: Record<string, string[]> = {
@@ -31,7 +33,7 @@ const fieldsByDoc: Record<string, string[]> = {
   'Aadhaar Card': ['Customer Aadhaar'],
   'Form 19-22': ['Form 20', 'Form 21', 'Form 22'],
   'GST Invoice': ['Tax Receipt'],
-  'Bonafide Cert': ['PAN'],
+  'Bonafide Cert': ['Bonafide Certificate Number'],
   'Bank Form 35': ['Dealer Authorization', 'RTO Clerk'],
 }
 
@@ -58,7 +60,7 @@ type WorkItem = {
   documents?: Array<{ id: string; name: string; status: string; fileName?: string | null }>
 }
 
-const eligibleStatuses = ['Insured', 'RTO Verification In Progress', 'RTO Filed', 'Financially Closed', 'Closed']
+const eligibleStatuses = ['Safety Acknowledged', 'Safety Completed', 'RTO Verification In Progress', 'RTO Filed', 'Insured', 'Financially Closed', 'Closed']
 
 export default function RTODocuments() {
   const navigate = useNavigate()
@@ -83,7 +85,12 @@ export default function RTODocuments() {
   )
 
   const documents = current?.documents?.length
-    ? current.documents
+    ? [
+        ...current.documents,
+        ...templateDocuments
+          .filter((name) => !current.documents?.some((doc) => doc.name === name))
+          .map((name) => ({ id: name, name, status: 'Pending', fileName: '' })),
+      ]
     : templateDocuments.map((name) => ({ id: name, name, status: 'Pending', fileName: '' }))
 
   const uploaded = documents.filter((doc: any) => doc.status === 'Uploaded').length
@@ -149,7 +156,7 @@ export default function RTODocuments() {
     if (moduleResponse.status === 'rejected' && rowsResponse.status === 'rejected') {
       setLoadIssue('RTO data is temporarily unavailable. Refresh once the backend is up.')
     } else if (!rtoEligible.length && (!rowsResponse || rowsResponse.status !== 'fulfilled' || rowsResponse.value.data.length === 0)) {
-      setLoadIssue('No insured vehicle is ready for RTO yet. Complete Insurance first, then start the RTO packet.')
+      setLoadIssue('No vehicle is ready for RTO yet. Complete Safety & Maintenance first, then start the RTO packet.')
     } else {
       setLoadIssue('')
     }
@@ -300,8 +307,8 @@ export default function RTODocuments() {
             <p className="text-sm font-semibold text-amber-900">RTO Flow Note</p>
             <p className="mt-2 text-sm text-amber-800">{loadIssue}</p>
             <div className="mt-4 flex gap-3">
-              <button onClick={() => navigate('/insurance')} className="rounded border border-amber-300 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-900">
-                Open Insurance
+              <button onClick={() => navigate('/safety')} className="rounded border border-amber-300 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-900">
+                Open Safety
               </button>
               <button onClick={() => navigate('/guided-flow')} className="rounded border border-amber-300 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-900">
                 Open Guided Flow
@@ -584,7 +591,7 @@ export default function RTODocuments() {
 
       <div className="fixed bottom-0 left-[260px] right-0 z-30 flex h-16 items-center justify-between border-t border-[#e2e8f0] bg-white px-8">
         <div className="flex items-center gap-4">
-          <button onClick={() => navigate(`/accounts${selectedVehicleId ? `?vehicleId=${selectedVehicleId}` : ''}`)} disabled={!current} className="h-9 min-w-[120px] rounded-sm border border-slate-300 bg-white px-6 text-[10px] font-bold uppercase tracking-wide text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
+          <button onClick={() => navigate(`/insurance${selectedVehicleId ? `?vehicleId=${selectedVehicleId}` : ''}`)} disabled={!current} className="h-9 min-w-[120px] rounded-sm border border-slate-300 bg-white px-6 text-[10px] font-bold uppercase tracking-wide text-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
             Next Step
           </button>
           <button onClick={saveDraft} disabled={loading || !selectedVehicle || !isEditing} className="h-9 min-w-[120px] rounded-sm border border-[#d7e0ea] bg-white px-6 text-[10px] font-bold uppercase tracking-wide text-[#60708a] disabled:opacity-60">

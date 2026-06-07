@@ -12,7 +12,7 @@ type Vehicle = {
   status: string
 }
 
-type PdiFilter = 'Pending PDI' | 'PDI Failed' | 'Ready for Installation' | 'All Visible'
+type PdiFilter = 'Pending PDI' | 'PDI Failed' | 'Pending Installation' | 'Ready for Installation' | 'Allocated to Customer' | 'All Visible'
 
 type AnswerValue = 'PASS' | 'FAIL' | 'N/A'
 type UploadedPhoto = { fileName: string; previewUrl: string }
@@ -35,6 +35,52 @@ type SavedPdiRecord = {
   }>
 }
 
+const PDI_CHECKLIST_FALLBACK = [
+  'Verify tractor and engine serial numbers with invoice number',
+  'Assembly removed parts for transport',
+  'Ensure tool box contains and literature to specification',
+  'Cooling system: water / coolant',
+  'Battery: electrolyte',
+  'Engine oil',
+  'Air cleaner',
+  'Transmission oil level / steering box oil level',
+  'Power steering reservoir, if fitted',
+  'Lubricate all grease nipples',
+  'Lightly oil clutch linkage, throttle linkage hand and foot, differential lock linkage and hinges',
+  'Drain plugs for tightness',
+  'Tightness of engine air intake and cooling system hose and pipe connections',
+  'Ensure pipes, hoses and wiring are not fouling exhaust system or sharp edges',
+  'Fan belt tension',
+  'Clutch linkage: free pedal clearance',
+  'Tightness of transmission nuts and bolts',
+  'Torque front wheel bolt/nut and rear wheel bolt/nut',
+  'Tyre pressure: front 20 psi, rear 20 psi for haulage',
+  'Front wheel alignment: toe-in 2-8 mm',
+  'Check front wheel bearings end float',
+  'Three-point linkage for correct fitting',
+  'Lights: indicator, head, side and panel',
+  'Plough lamp / hazard warning lights / horn',
+  'Clutch and brake pedal adjustments',
+  'Headlight alignment and warning light',
+  'Safety start switch function',
+  'All warning lights function, if provided',
+  'Check idling and maximum off-load speeds to specification',
+  'Remove oil, fuel and coolant traces before leak check',
+  'Gear selection is normal for the model',
+  'Operation of brakes: LH / RH',
+  'Steering feel, lock to lock',
+  'Differential lock function, if fitted',
+  'Handbrake effectiveness',
+  'Operation of gauges and instruments',
+  'Draft control, if applicable',
+  'Position control: correct position',
+  'Constant pumping correctly positioned, if applicable',
+  'Response control effectiveness',
+  'Leakages in cooling, air, lubrication and fuel system',
+  'Adjust brake, if necessary',
+  'Ensure no leaks are apparent from areas previously cleaned',
+]
+
 function formatDateStamp() {
   return new Date().toLocaleDateString('en-GB', {
     day: '2-digit',
@@ -44,9 +90,9 @@ function formatDateStamp() {
 }
 
 function inspectionCardState(status: string) {
-  if (status === 'Ready for Installation') {
+  if (status === 'Pending Installation' || status === 'Ready for Installation' || status === 'Allocated to Customer') {
     return {
-      badge: 'Completed',
+      badge: status === 'Allocated to Customer' ? 'Completed' : 'PDI Completed',
       badgeClass: 'bg-[#1b5e20] text-white',
       cardClass: 'bg-[#eef3e8] border-[#d7ddd1] border-l-[#1b5e20] opacity-90',
       strike: true,
@@ -80,7 +126,7 @@ export default function PDIManagement() {
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
-  const [checklist, setChecklist] = useState<string[]>([])
+  const [checklist, setChecklist] = useState<string[]>(PDI_CHECKLIST_FALLBACK)
   const [selectedVehicleId, setSelectedVehicleId] = useState('')
   const [remarks, setRemarks] = useState('')
   const [otp, setOtp] = useState('')
@@ -88,16 +134,25 @@ export default function PDIManagement() {
   const [signatoryPhoto, setSignatoryPhoto] = useState<UploadedPhoto | null>(null)
   const [loading, setLoading] = useState(false)
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
+  const [actionTaken, setActionTaken] = useState<Record<string, string>>({})
   const [checklistPhotos, setChecklistPhotos] = useState<Record<string, UploadedPhoto>>({})
   const [pageReady, setPageReady] = useState(false)
   const [loadIssue, setLoadIssue] = useState('')
   const [savedRecord, setSavedRecord] = useState<SavedPdiRecord | null>(null)
   const [vehicleFilter, setVehicleFilter] = useState<PdiFilter>('Pending PDI')
+  const [reportHeader, setReportHeader] = useState({
+    Model: '',
+    'Serial Number': '',
+    'Engine Number': '',
+    'Dealer Name': '',
+    'Job Card Number': '',
+    'PDI Date': '',
+  })
 
   const load = async () => {
     const [vehiclesRes, moduleRes] = await Promise.allSettled([api.get('/vehicles'), api.get('/modules/pdi')])
     const data = vehiclesRes.status === 'fulfilled' ? vehiclesRes.value.data : []
-    const items = moduleRes.status === 'fulfilled' && moduleRes.value.data.checklist?.length ? moduleRes.value.data.checklist : []
+    const items = moduleRes.status === 'fulfilled' && moduleRes.value.data.checklist?.length ? moduleRes.value.data.checklist : PDI_CHECKLIST_FALLBACK
     setChecklist(items)
     setAnswers((current) => {
       const next = { ...current }
@@ -106,13 +161,15 @@ export default function PDIManagement() {
       }
       return next
     })
-    const relevantVehicles = data.filter((vehicle: Vehicle) => vehicle.status === 'Pending PDI' || vehicle.status === 'PDI Failed' || vehicle.status === 'Ready for Installation')
+    const relevantVehicles = data.filter((vehicle: Vehicle) => vehicle.status === 'Pending PDI' || vehicle.status === 'PDI Failed' || vehicle.status === 'Pending Installation' || vehicle.status === 'Ready for Installation' || vehicle.status === 'Allocated to Customer')
     setVehicles(relevantVehicles)
     const requestedVehicleId = searchParams.get('vehicleId')
     if (requestedVehicleId && relevantVehicles.some((vehicle) => vehicle.id === requestedVehicleId)) {
       const requestedVehicle = relevantVehicles.find((vehicle) => vehicle.id === requestedVehicleId)
       if (requestedVehicle) {
+        if (requestedVehicle.status === 'Pending Installation') setVehicleFilter('Pending Installation')
         if (requestedVehicle.status === 'Ready for Installation') setVehicleFilter('Ready for Installation')
+        if (requestedVehicle.status === 'Allocated to Customer') setVehicleFilter('Allocated to Customer')
         if (requestedVehicle.status === 'PDI Failed') setVehicleFilter('PDI Failed')
         if (requestedVehicle.status === 'Pending PDI') setVehicleFilter('Pending PDI')
       }
@@ -124,7 +181,7 @@ export default function PDIManagement() {
     if (vehiclesRes.status === 'rejected' && moduleRes.status === 'rejected') {
       setLoadIssue('PDI data is temporarily unavailable. Refresh once the backend is up.')
     } else if (!relevantVehicles.length) {
-      setLoadIssue('No vehicles are waiting for PDI yet. Create Purchase Invoices first.')
+      setLoadIssue('No vehicles are waiting for PDI yet. Create Purchase Invoice first.')
     } else {
       setLoadIssue('')
     }
@@ -153,7 +210,7 @@ export default function PDIManagement() {
     if (vehicleFilter === 'All Visible') return vehicles
     return vehicles.filter((vehicle) => vehicle.status === vehicleFilter)
   }, [vehicleFilter, vehicles])
-  const isReadOnlyResult = Boolean(selectedVehicle && selectedVehicle.status === 'Ready for Installation' && savedRecord)
+  const isReadOnlyResult = Boolean(selectedVehicle && ['Pending Installation', 'Ready for Installation', 'Allocated to Customer'].includes(selectedVehicle.status) && savedRecord)
   const completedCount = useMemo(() => checklist.filter((item) => answers[item] && answers[item] !== 'N/A').length, [answers, checklist])
   const failedCount = useMemo(() => Object.values(answers).filter((value) => value === 'FAIL').length, [answers])
   const progress = checklist.length ? Math.round((completedCount / checklist.length) * 100) : 0
@@ -256,12 +313,18 @@ export default function PDIManagement() {
         'Vehicle Code': selectedVehicle.code,
         'Engine Number': selectedVehicle.engineNo,
         'Chassis Number': selectedVehicle.chassisNo,
+        Model: reportHeader.Model || selectedVehicle.model,
+        'Serial Number': reportHeader['Serial Number'] || selectedVehicle.chassisNo,
+        'Dealer Name': reportHeader['Dealer Name'],
+        'Job Card Number': reportHeader['Job Card Number'],
+        'PDI Date': reportHeader['PDI Date'],
         'Inspector Remarks': remarks,
         'Authorized Signatory Photo': signatoryPhoto?.fileName ?? '',
         'Inspector OTP': otp,
       }
       for (const item of checklist) {
         payload[`PDI:${item}`] = answers[item] ?? 'N/A'
+        if (actionTaken[item]) payload[`PDI:${item}:remarks`] = actionTaken[item]
         if (checklistPhotos[item]?.fileName) payload[`PDI Photo:${item}`] = checklistPhotos[item].fileName
       }
       await api.post('/modules/pdi/work-items', payload)
@@ -296,114 +359,36 @@ export default function PDIManagement() {
           </section>
         ) : null}
 
-        <section className="mb-10">
-          <div className="mb-5 flex items-center justify-between gap-4">
-            <h2 className="flex items-center gap-3 text-xl font-semibold uppercase tracking-tight text-green-950">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-950 text-base font-bold text-white">1</span>
-              Vehicle Selection Grid
-            </h2>
-            <div className="flex items-center gap-3">
-              <select
-                value={vehicleFilter}
-                onChange={(event) => setVehicleFilter(event.target.value as PdiFilter)}
-                className="h-10 rounded border border-slate-200 bg-white px-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-700 outline-none focus:border-[#1b5e20]"
-              >
-                <option value="Pending PDI">Pending PDI</option>
-                <option value="PDI Failed">PDI Failed</option>
-                <option value="Ready for Installation">Completed PDI</option>
-                <option value="All Visible">All Visible</option>
-              </select>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                {filteredVehicles.length} Vehicle{filteredVehicles.length === 1 ? '' : 's'} in filter
-              </span>
-            </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {filteredVehicles.map((vehicle) => {
-              const state = inspectionCardState(vehicle.status)
-              const active = selectedVehicleId === vehicle.id
-
-              return (
-                <button
-                  key={vehicle.id}
-                  type="button"
-                  onClick={() => setSelectedVehicleId(vehicle.id)}
-                  className={`border border-l-4 p-5 text-left transition hover:shadow-sm ${state.cardClass} ${active ? 'shadow-sm' : ''}`}
-                >
-                  <div className="mb-4 flex items-start justify-between gap-3">
-                    <span className={`rounded px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${state.badgeClass}`}>
-                      {state.badge}
-                    </span>
-                    <span className="font-mono text-xs text-slate-400">{vehicle.code}</span>
-                  </div>
-
-                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Chassis No.</p>
-                  <p className={`font-mono text-xl leading-tight text-green-950 ${state.strike ? 'text-slate-400 line-through' : ''}`}>
-                    {vehicle.chassisNo}
-                  </p>
-
-                  <div className="mt-5 flex items-end justify-between border-t border-slate-200 pt-4">
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
-                        {vehicle.status === 'Ready for Installation' ? 'Inspection Result' : 'Engine No.'}
-                      </p>
-                      <p className={`font-mono text-sm text-green-950 ${state.strike ? 'text-slate-500' : ''}`}>
-                        {vehicle.status === 'Ready for Installation' ? 'View Saved Result' : vehicle.engineNo}
-                      </p>
-                    </div>
-                    {vehicle.status === 'Pending PDI' || vehicle.status === 'PDI Failed' ? (
-                      <span className="material-symbols-outlined text-[2rem] text-green-950">arrow_forward</span>
-                    ) : vehicle.status === 'Ready for Installation' ? (
-                      <span className="material-symbols-outlined text-green-800">check_circle</span>
-                    ) : null}
-                  </div>
-                </button>
-              )
-            })}
-
-            {!filteredVehicles.length ? (
-              <div className="col-span-full border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500">
-                {vehicleFilter === 'Pending PDI'
-                  ? 'No vehicles are currently in Pending PDI. Create a Purchase Invoice first or switch the filter.'
-                  : `No vehicles match the "${vehicleFilter}" filter right now.`}
+        <section className="pb-10">
+          {!isReadOnlyResult ? (
+            <div className="mb-5 border border-slate-200 bg-white p-5">
+              <div className="grid gap-4 lg:grid-cols-3">
+                <label className="space-y-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Model</span>
+                  <input value={reportHeader.Model || selectedVehicle?.model || ''} onChange={(event) => setReportHeader((current) => ({ ...current, Model: event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-green-900" />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Serial No.</span>
+                  <input value={reportHeader['Serial Number'] || selectedVehicle?.chassisNo || ''} onChange={(event) => setReportHeader((current) => ({ ...current, 'Serial Number': event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-green-900" />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Job Card No.</span>
+                  <input value={reportHeader['Job Card Number']} onChange={(event) => setReportHeader((current) => ({ ...current, 'Job Card Number': event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-green-900" />
+                </label>
+                <label className="space-y-2 lg:col-span-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Dealer's Name</span>
+                  <input value={reportHeader['Dealer Name']} onChange={(event) => setReportHeader((current) => ({ ...current, 'Dealer Name': event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-green-900" />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">PDI Carried Out On</span>
+                  <input type="date" value={reportHeader['PDI Date']} onChange={(event) => setReportHeader((current) => ({ ...current, 'PDI Date': event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-green-900" />
+                </label>
               </div>
-            ) : null}
-          </div>
-        </section>
-
-        <section className="mx-auto max-w-[1220px] pb-10">
-          <div className="mb-4 flex items-center gap-3">
-            <h2 className="flex items-center gap-3 text-xl font-semibold uppercase tracking-tight text-green-950">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-green-950 text-base font-bold text-white">2</span>
-              {isReadOnlyResult ? 'Inspection Result' : 'Inspection Checklist'}
-            </h2>
-          </div>
-
-          <div className="mb-6 flex flex-wrap items-center justify-between gap-6 bg-green-950 px-8 py-5 text-white">
-            <div className="flex items-center gap-4">
-              <div className="bg-white/10 p-3">
-                <span className="material-symbols-outlined text-white">agriculture</span>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Current Inspection Vehicle</p>
-                <h3 className="text-xl font-semibold leading-none">
-                  {selectedVehicle ? `${selectedVehicle.model} - ${selectedVehicle.chassisNo}` : 'Select a vehicle from the grid'}
-                </h3>
+              <div className="mt-4 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                Indicate by a tick mark for OK and cross mark for Not OK in the Observation column.
               </div>
             </div>
-
-            <div className="flex gap-8">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Date</p>
-                <p className="font-mono text-lg">{formatDateStamp()}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-white/70">Location</p>
-                <p className="text-sm font-semibold uppercase tracking-[0.08em]">Chennai Hub-01</p>
-              </div>
-            </div>
-          </div>
+          ) : null}
 
           <div className="mb-5 flex items-center gap-6 border border-slate-200 bg-white p-5">
             <div className="flex-1">
@@ -429,7 +414,7 @@ export default function PDIManagement() {
                 <div className="flex flex-wrap items-center justify-between gap-4">
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Saved Inspection Status</p>
-                    <h3 className="mt-2 text-lg font-semibold text-green-950">{savedRecord?.status ?? 'Ready for Installation'}</h3>
+                    <h3 className="mt-2 text-lg font-semibold text-green-950">{savedRecord?.status ?? 'Allocated to Customer'}</h3>
                     <p className="mt-1 text-sm text-slate-500">
                       {savedRecord?.inspector?.name ? `Inspector: ${savedRecord.inspector.name}` : 'Inspector recorded in system'}
                       {savedRecord?.completedAt ? ` • Completed ${new Date(savedRecord.completedAt).toLocaleString('en-IN')}` : ''}
@@ -447,7 +432,7 @@ export default function PDIManagement() {
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-5">
                   <div className="flex items-center gap-3">
                     <span className="material-symbols-outlined text-green-900">fact_check</span>
-                    <h3 className="text-base font-semibold uppercase tracking-[0.08em] text-green-950">Saved Checklist Result</h3>
+                    <h3 className="text-base font-semibold uppercase tracking-[0.08em] text-green-950">Saved Pre-Delivery Inspection Report</h3>
                   </div>
                 </div>
                 <div className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4">
@@ -456,7 +441,7 @@ export default function PDIManagement() {
                       <div className="flex items-start justify-between gap-4">
                         <div>
                           <p className="text-sm font-semibold text-green-950">{item.label}</p>
-                          {item.remarks ? <p className="mt-2 text-xs text-slate-500">{item.remarks}</p> : null}
+                          {item.remarks ? <p className="mt-2 text-xs text-slate-500">Action Taken: {item.remarks}</p> : null}
                         </div>
                         <span className={`rounded px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] ${resultTone(item.result)}`}>
                           {item.result}
@@ -473,7 +458,7 @@ export default function PDIManagement() {
                 <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-5">
                   <div className="flex items-center gap-3">
                     <span className="material-symbols-outlined text-green-900">settings_suggest</span>
-                    <h3 className="text-base font-semibold uppercase tracking-[0.08em] text-green-950">Mechanical &amp; Powertrain</h3>
+                    <h3 className="text-base font-semibold uppercase tracking-[0.08em] text-green-950">Pre-Delivery Inspection Report</h3>
                     <span className="bg-[#acf4a4] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.08em] text-[#002203]">
                       {checklist.length} Items
                     </span>
@@ -481,16 +466,16 @@ export default function PDIManagement() {
                 </div>
 
                 <div className="grid gap-4 p-6 md:grid-cols-2 xl:grid-cols-4">
-                  {checklist.map((item) => {
+                  {checklist.map((item, index) => {
                     const answer = answers[item] ?? 'N/A'
                     const failed = answer === 'FAIL'
                     const uploadedPhoto = checklistPhotos[item]
                     return (
                       <div key={item} className={`rounded border ${failed ? 'border-red-200 bg-red-50/40' : 'border-slate-200 bg-white'}`}>
                         <div className="p-5">
-                          <p className="text-base font-semibold leading-snug text-green-950">{item}</p>
-                          <p className="mt-2 text-sm text-slate-500">
-                            {failed ? 'Needs corrective attention before vehicle clearance.' : 'Mark the inspection result for this checkpoint.'}
+                          <p className="text-base font-semibold leading-snug text-green-950">
+                            <span className="mr-2 font-mono text-sm text-slate-500">{index + 1}.</span>
+                            {item}
                           </p>
 
                           <div className="mt-4 flex flex-wrap items-center gap-1">
@@ -549,6 +534,16 @@ export default function PDIManagement() {
                               </div>
                             </div>
                           ) : null}
+                          <label className="mt-4 block space-y-2 border-t border-slate-100 pt-4">
+                            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">Action Taken</span>
+                            <textarea
+                              value={actionTaken[item] ?? ''}
+                              onChange={(event) => setActionTaken((current) => ({ ...current, [item]: event.target.value }))}
+                              className="w-full rounded border border-slate-200 p-3 text-sm outline-none focus:border-green-900"
+                              rows={2}
+                              placeholder="Corrective action / observation notes..."
+                            />
+                          </label>
                         </div>
                       </div>
                     )

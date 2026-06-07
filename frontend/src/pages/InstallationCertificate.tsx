@@ -34,15 +34,65 @@ const aadhaarPattern = /^\d{12}$/
 const panPattern = /^[A-Z]{5}[0-9]{4}[A-Z]$/
 
 const initialForm = {
+  'Dealer Code': '',
+  'OSM Number': '',
+  'Dealer Name': '',
+  'Dealer City': '',
+  'Tractor Number': '',
+  'Engine Number': '',
+  'Installation Date': '',
+  'TAFE Invoice Number': '',
+  'TAFE Invoice Date': '',
   'Customer Name': '',
+  'Customer First Name': '',
+  'Customer Second Name': '',
+  'Customer Last Name': '',
   'Father Name': '',
   'Mobile Number': '',
   'Email Address': '',
   'Aadhaar Number': '',
   'PAN Number': '',
+  'Door Number': '',
+  'Street Number': '',
+  'Village Name': '',
+  'PO Name': '',
+  'PIN Code': '',
+  Taluk: '',
+  District: '',
+  State: '',
   Address: '',
+  'Customer Satisfaction Confirmation': '',
+  'Dealer Installation Confirmation': '',
   'Digital Signature': '',
+  'Dealer Stamp and Signature': '',
+  'Dealer Signature Date': '',
 }
+
+const dealerFields = [
+  { key: 'Dealer Code', label: 'Dealer Code' },
+  { key: 'OSM Number', label: 'OSM No.' },
+  { key: 'Dealer Name', label: 'Dealer Name' },
+  { key: 'Dealer City', label: 'Dealer City' },
+] as const
+
+const tractorFields = [
+  { key: 'Tractor Number', label: 'Tractor No.' },
+  { key: 'Engine Number', label: 'Engine No.' },
+  { key: 'Installation Date', label: 'Installation Date', type: 'date' },
+  { key: 'TAFE Invoice Number', label: 'TAFE Invoice No.' },
+  { key: 'TAFE Invoice Date', label: 'Invoice Date', type: 'date' },
+] as const
+
+const addressFields = [
+  { key: 'Door Number', label: 'Door No.' },
+  { key: 'Street Number', label: 'Street No.' },
+  { key: 'Village Name', label: 'Village Name' },
+  { key: 'PO Name', label: 'P.O. Name' },
+  { key: 'PIN Code', label: 'PIN Code' },
+  { key: 'Taluk', label: 'Taluk' },
+  { key: 'District', label: 'District' },
+  { key: 'State', label: 'State' },
+] as const
 
 export default function InstallationCertificate() {
   const navigate = useNavigate()
@@ -64,14 +114,14 @@ export default function InstallationCertificate() {
     const [vehicleRes, customerRes] = await Promise.allSettled([api.get('/vehicles'), api.get('/customers')])
     const vehicleRows = vehicleRes.status === 'fulfilled' ? vehicleRes.value.data : []
     const customerRows = customerRes.status === 'fulfilled' ? customerRes.value.data : []
-    const readyVehicles = vehicleRows.filter((vehicle: Vehicle) => ['Ready for Installation', 'Allocated to Customer'].includes(vehicle.status))
+      const readyVehicles = vehicleRows.filter((vehicle: Vehicle) => ['Pending Installation', 'Ready for Installation'].includes(vehicle.status))
     setVehicles(readyVehicles)
     setCustomers(customerRows)
     if (!selectedVehicleId && readyVehicles[0]?.id) setSelectedVehicleId(readyVehicles[0].id)
     if (vehicleRes.status === 'rejected' && customerRes.status === 'rejected') {
       setLoadIssue('Installation data is temporarily unavailable. Refresh once the backend is up.')
     } else if (!readyVehicles.length) {
-      setLoadIssue('No vehicle is ready for installation yet. First create a purchase invoice and complete PDI for that vehicle.')
+        setLoadIssue('No vehicle is ready for installation yet. Complete Purchase Invoice and PDI for that vehicle first.')
     } else {
       setLoadIssue('')
     }
@@ -105,8 +155,32 @@ export default function InstallationCertificate() {
       'Email Address': customer.email ?? '',
       'Aadhaar Number': customer.aadhaar ?? '',
       'PAN Number': customer.panNumber ?? '',
+      'Dealer Code': '',
+      'OSM Number': '',
+      'Dealer Name': '',
+      'Dealer City': '',
+      'Tractor Number': '',
+      'Engine Number': '',
+      'Installation Date': '',
+      'TAFE Invoice Number': '',
+      'TAFE Invoice Date': '',
+      'Customer First Name': customer.name.split(' ')[0] ?? '',
+      'Customer Second Name': customer.name.split(' ').slice(1, -1).join(' '),
+      'Customer Last Name': customer.name.split(' ').slice(-1)[0] ?? '',
+      'Door Number': '',
+      'Street Number': '',
+      'Village Name': '',
+      'PO Name': '',
+      'PIN Code': '',
+      Taluk: '',
+      District: '',
+      State: '',
       Address: customer.address,
+      'Customer Satisfaction Confirmation': '',
+      'Dealer Installation Confirmation': '',
       'Digital Signature': '',
+      'Dealer Stamp and Signature': '',
+      'Dealer Signature Date': '',
     })
   }
 
@@ -133,6 +207,18 @@ export default function InstallationCertificate() {
     if (!upload) return
     window.open(upload.previewUrl, '_blank', 'noopener,noreferrer')
   }
+
+  const renderField = (field: { key: keyof typeof initialForm; label: string; type?: string }) => (
+    <label key={field.key} className="space-y-1">
+      <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{field.label}</span>
+      <input
+        type={field.type ?? 'text'}
+        value={formValues[field.key]}
+        onChange={(event) => updateField(field.key, event.target.value)}
+        className="h-10 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]"
+      />
+    </label>
+  )
 
   const resetForNewCustomer = () => {
     setSearch('')
@@ -173,9 +259,10 @@ export default function InstallationCertificate() {
 
   const updateField = (field: keyof typeof initialForm, value: string) => {
     let nextValue = value
-    if (field === 'Mobile Number' || field === 'Aadhaar Number') nextValue = value.replace(/\D/g, '')
+    if (field === 'Mobile Number' || field === 'Aadhaar Number' || field === 'PIN Code') nextValue = value.replace(/\D/g, '')
     if (field === 'Aadhaar Number') nextValue = nextValue.slice(0, 12)
     if (field === 'Mobile Number') nextValue = nextValue.slice(0, 10)
+    if (field === 'PIN Code') nextValue = nextValue.slice(0, 6)
     if (field === 'PAN Number') nextValue = value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
     setFormValues((current) => ({ ...current, [field]: nextValue }))
     setErrors((current) => ({ ...current, [field]: validateField(field, nextValue) || undefined }))
@@ -199,8 +286,18 @@ export default function InstallationCertificate() {
       return
     }
     const validationErrors = validateForm()
-    if (!formValues['Customer Name'] || formValues['Mobile Number'].length !== 10 || !formValues.Address) {
-      toast.error('Enter customer name, mobile number, and address')
+    const composedAddress = [
+      formValues['Door Number'],
+      formValues['Street Number'],
+      formValues['Village Name'],
+      formValues['PO Name'],
+      formValues.Taluk,
+      formValues.District,
+      formValues.State,
+      formValues['PIN Code'] ? `PIN ${formValues['PIN Code']}` : '',
+    ].filter(Boolean).join(', ')
+    if (!formValues['Customer Name'] || formValues['Mobile Number'].length !== 10 || (!formValues.Address && !composedAddress)) {
+      toast.error('Enter customer name, phone number, and address')
       return
     }
     if (Object.keys(validationErrors).length) {
@@ -215,7 +312,9 @@ export default function InstallationCertificate() {
     try {
       await api.post('/modules/installation/work-items', {
         ...formValues,
+        Address: formValues.Address || composedAddress,
         'Vehicle Code': selectedVehicle.code,
+        'Tractor Number': formValues['Tractor Number'] || selectedVehicle.chassisNo,
         'Engine Number': selectedVehicle.engineNo,
         'Chassis Number': selectedVehicle.chassisNo,
         'Digital Signature': customerSignature.fileName,
@@ -265,6 +364,12 @@ export default function InstallationCertificate() {
               </div>
 
               <div className="mt-6 space-y-3">
+                <div className="rounded border border-slate-200 bg-slate-50 p-4">
+                  <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Dealer / OSM Details</p>
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {dealerFields.map(renderField)}
+                  </div>
+                </div>
                 <label className="space-y-2">
                   <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Select Vehicle</span>
                   <select value={selectedVehicleId} onChange={(event) => setSelectedVehicleId(event.target.value)} className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]">
@@ -276,6 +381,13 @@ export default function InstallationCertificate() {
                   </select>
                 </label>
                 <div className="grid gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2 grid gap-3 md:grid-cols-3">
+                    {tractorFields.map((field) =>
+                      field.key === 'Engine Number'
+                        ? renderField({ ...field, key: 'Engine Number' })
+                        : renderField(field),
+                    )}
+                  </div>
                   <div>
                     <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Engine Number</p>
                     <p className="mt-1 font-mono text-[13px] text-slate-900">{selectedVehicle?.engineNo ?? '-'}</p>
@@ -326,16 +438,28 @@ export default function InstallationCertificate() {
                 ) : null}
 
                 <div className="grid gap-4 md:grid-cols-2">
-                  <label className="space-y-2">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Full Name</span>
+                  <label className="space-y-2 md:col-span-2">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Customer's Full Name</span>
                     <input value={formValues['Customer Name']} onChange={(event) => updateField('Customer Name', event.target.value)} className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">First</span>
+                    <input value={formValues['Customer First Name']} onChange={(event) => updateField('Customer First Name', event.target.value)} className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Second</span>
+                    <input value={formValues['Customer Second Name']} onChange={(event) => updateField('Customer Second Name', event.target.value)} className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Last</span>
+                    <input value={formValues['Customer Last Name']} onChange={(event) => updateField('Customer Last Name', event.target.value)} className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
                   </label>
                   <label className="space-y-2">
                     <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Father Name</span>
                     <input value={formValues['Father Name']} onChange={(event) => updateField('Father Name', event.target.value)} className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
                   </label>
                   <label className="space-y-2">
-                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Mobile Number</span>
+                    <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Phone No.</span>
                     <input value={formValues['Mobile Number']} onChange={(event) => updateField('Mobile Number', event.target.value)} className={`h-11 w-full rounded border px-3 font-mono text-sm outline-none focus:border-[#1b5e20] ${errors['Mobile Number'] ? 'border-red-400 bg-red-50' : 'border-slate-200'}`} />
                     {errors['Mobile Number'] ? <p className="text-xs text-red-600">{errors['Mobile Number']}</p> : null}
                   </label>
@@ -356,8 +480,12 @@ export default function InstallationCertificate() {
                   </label>
                 </div>
 
+                <div className="grid gap-4 md:grid-cols-2">
+                  {addressFields.map(renderField)}
+                </div>
+
                 <label className="space-y-2">
-                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Primary Address</span>
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Full Address</span>
                   <textarea value={formValues.Address} onChange={(event) => updateField('Address', event.target.value)} rows={3} className="w-full rounded border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#1b5e20]" />
                 </label>
               </div>
@@ -388,6 +516,28 @@ export default function InstallationCertificate() {
               </div>
             </div>
             <div className="rounded border-2 border-dashed border-slate-300 bg-slate-50 p-4">
+              <div className="mb-4 grid gap-4 md:grid-cols-2">
+                <label className="space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Customer Satisfaction Statement</span>
+                  <textarea
+                    value={formValues['Customer Satisfaction Confirmation']}
+                    onChange={(event) => updateField('Customer Satisfaction Confirmation', event.target.value)}
+                    rows={3}
+                    className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1b5e20]"
+                    placeholder="The Tractor has been installed to my satisfaction"
+                  />
+                </label>
+                <label className="space-y-2">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Dealer Installation Statement</span>
+                  <textarea
+                    value={formValues['Dealer Installation Confirmation']}
+                    onChange={(event) => updateField('Dealer Installation Confirmation', event.target.value)}
+                    rows={3}
+                    className="w-full rounded border border-slate-200 px-3 py-2 text-sm outline-none focus:border-[#1b5e20]"
+                    placeholder="The Tractor has been installed to satisfaction of the customer"
+                  />
+                </label>
+              </div>
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Customer Confirmation Signature</p>
               <p className="mt-2 text-sm text-slate-600">PRS requires a digital signature for Installation Certificate generation.</p>
               <div className="mt-4 rounded border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
@@ -411,8 +561,12 @@ export default function InstallationCertificate() {
               </div>
             </div>
             <div className="mt-5 rounded border border-slate-200 bg-slate-50 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Handover Photo</p>
-              <p className="mt-2 text-sm text-slate-600">Capture the tractor handover moment or handover evidence if your process needs it.</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Dealer Stamp and Signature</p>
+              <p className="mt-2 text-sm text-slate-600">Attach dealer stamp/signature evidence and signature date from the certificate.</p>
+              <label className="mt-4 block space-y-2">
+                <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-500">Date</span>
+                <input type="date" value={formValues['Dealer Signature Date']} onChange={(event) => updateField('Dealer Signature Date', event.target.value)} className="h-10 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
+              </label>
               <div className="mt-4 rounded border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
                 {handoverPhoto?.fileName ?? 'No handover photo uploaded yet'}
               </div>

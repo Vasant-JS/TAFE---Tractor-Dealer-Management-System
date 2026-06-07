@@ -24,7 +24,7 @@ export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or
       '/purchase-invoices': 'Purchase Invoices',
       '/pdi': 'Pre-Delivery Inspection',
       '/installation': 'Installation Certificate',
-      '/delivery': 'Customer Delivery Sheet',
+      '/delivery': 'Sales History',
       '/exchange': 'Exchange Registry',
       '/safety': 'Safety & Maintenance',
       '/insurance': 'Insurance Management',
@@ -62,7 +62,7 @@ export default function TopBar({ placeholder = 'Search Vehicle (VIN, Chassis, or
   }
 
   const showHelp = () => {
-    toast('Use Purchase Invoice to create vehicles, Installation/Delivery to create customers, and Complete buttons to move workflow items.')
+    toast('Use Purchase Invoice to create vehicles, PDI to inspect the tractor, Installation Certificate to allocate the customer, then complete Sales History before later modules.')
   }
 
   useEffect(() => {

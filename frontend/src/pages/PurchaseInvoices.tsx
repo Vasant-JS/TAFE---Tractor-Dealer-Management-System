@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import type { ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import toast from 'react-hot-toast'
 import api from '../api/client'
@@ -11,6 +12,7 @@ type PurchaseRow = {
   amount?: number | null
   due?: string
   payload?: string | null
+  documents?: Array<{ id: string; name: string; fileName?: string | null }>
   vehicle?: {
     id: string
     code: string
@@ -22,19 +24,106 @@ type PurchaseRow = {
 }
 
 const initialForm = {
+  IRN: '',
+  'Ack Number': '',
+  'Ack Date': '',
   'Invoice Serial Number': '',
   'Invoice Date': '',
+  'CIN Number': '',
+  PAN: '',
+  'PO Number': '',
+  'RTGS Date': '',
   'E-Way Bill Number': '',
   'E-Way Bill Date': '',
+  'Consigner GST Number': '',
+  'Consigner Name': '',
+  'Consigner Address': '',
+  'Receiver Name': '',
+  'Receiver Address': '',
+  'Receiver State': '',
+  'Receiver GSTIN': '',
+  'Place of Supply': '',
+  'Consignor Name': '',
+  'Consignor Address': '',
+  'Consignor State': '',
+  'Consignor GSTIN': '',
+  'Consignor PAN': '',
   'Number of Vehicles Received': '1',
   'Total Purchase Value': '',
-  'Consignment Details': '',
-  'Consigner Name': '',
-  'Consigner Invoice Number': '',
   'Engine Number': '',
   'Chassis Number': '',
   Model: '',
+  'LR Copy File Name': '',
+  'LR GC Number': '',
+  'LR Date': '',
+  'LR Destination': '',
+  'LR Truck Number': '',
+  'LR Transporter Name': '',
+  'LR Transporter Address': '',
+  'LR Consignor': '',
+  'LR Consignee': '',
+  'LR Model Number': '',
+  'LR Tractor Serial Number': '',
+  'LR Invoice Number': '',
+  'LR Invoice Date': '',
+  'LR Invoice Value': '',
+  'LR Freight': '',
+  'LR Remarks': '',
+  'Consignment Details': '',
 }
+
+const invoiceFields = [
+  { key: 'IRN', label: 'IRN', placeholder: 'Invoice Reference Number' },
+  { key: 'Ack Number', label: 'Ack. No.', placeholder: 'Acknowledgement number' },
+  { key: 'Ack Date', label: 'Ack. Date', type: 'date' },
+  { key: 'Invoice Serial Number', label: 'Serial No. of Invoice', placeholder: 'e.g. TAFE-2026-001' },
+  { key: 'Invoice Date', label: 'Date of Invoice', type: 'date' },
+  { key: 'E-Way Bill Number', label: 'E-Way Bill No.', placeholder: 'E-way bill number' },
+  { key: 'E-Way Bill Date', label: 'E-Way Bill Date', type: 'date' },
+  { key: 'Consigner GST Number', label: 'Consigner GST No.', placeholder: 'GSTIN' },
+  { key: 'Consigner Name', label: 'Consigner Name', placeholder: 'Supplier/legal name' },
+  { key: 'Consigner Address', label: 'Consigner Address', placeholder: 'Registered address' },
+  { key: 'CIN Number', label: 'CIN No.', placeholder: 'Corporate identity number' },
+  { key: 'PAN', label: 'PAN', placeholder: 'PAN' },
+  { key: 'PO Number', label: 'PO No.', placeholder: 'Purchase order number' },
+  { key: 'RTGS Date', label: 'RTGS/Date', type: 'date' },
+] as const
+
+const receiverFields = [
+  { key: 'Receiver Name', label: 'Name' },
+  { key: 'Receiver Address', label: 'Address' },
+  { key: 'Receiver State', label: 'State' },
+  { key: 'Receiver GSTIN', label: 'GSTIN' },
+  { key: 'Place of Supply', label: 'Place of Supply' },
+] as const
+
+const consignorFields = [
+  { key: 'Consignor Name', label: 'Name' },
+  { key: 'Consignor Address', label: 'Address' },
+  { key: 'Consignor State', label: 'State' },
+  { key: 'Consignor GSTIN', label: 'GSTIN' },
+  { key: 'Consignor PAN', label: 'PAN' },
+] as const
+
+const lrFields = [
+  { key: 'LR GC Number', label: 'G.C. / LR No.', placeholder: 'e.g. 2311' },
+  { key: 'LR Date', label: 'LR Date', type: 'date' },
+  { key: 'LR Destination', label: 'Destination' },
+  { key: 'LR Truck Number', label: 'Truck No.' },
+  { key: 'LR Transporter Name', label: 'Transporter Name', placeholder: 'e.g. Esteem Trucking Pvt Ltd' },
+  { key: 'LR Transporter Address', label: 'Transporter Address' },
+  { key: 'LR Consignor', label: 'LR Consignor' },
+  { key: 'LR Consignee', label: 'LR Consignee' },
+  { key: 'LR Model Number', label: 'Model No.' },
+  { key: 'LR Tractor Serial Number', label: 'Tractor Sl. No.' },
+  { key: 'LR Invoice Number', label: 'Invoice No.' },
+  { key: 'LR Invoice Date', label: 'Invoice Date', type: 'date' },
+  { key: 'LR Invoice Value', label: 'Invoice Value' },
+  { key: 'LR Freight', label: 'Freight' },
+] as const
+
+type SectionId = 'invoice' | 'receiver' | 'consignor' | 'vehicle' | 'lr'
+type FieldConfig = { key: keyof typeof initialForm; label: string; type?: string; placeholder?: string }
 
 function onlyDigits(value: string) {
   return value.replace(/\D/g, '')
@@ -52,6 +141,15 @@ function parsePayload(payload?: string | null) {
   }
 }
 
+function fileToBase64(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result).split(',')[1] ?? '')
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function PurchaseInvoices() {
   const navigate = useNavigate()
   const [rows, setRows] = useState<PurchaseRow[]>([])
@@ -61,7 +159,15 @@ export default function PurchaseInvoices() {
   const [vendorFilter, setVendorFilter] = useState('All Vendors')
   const [statusFilter, setStatusFilter] = useState<'All' | 'Pending' | 'Verified'>('All')
   const [formValues, setFormValues] = useState(initialForm)
+  const [lrCopyFile, setLrCopyFile] = useState<File | null>(null)
   const [selectedPreviewId, setSelectedPreviewId] = useState('')
+  const [collapsedSections, setCollapsedSections] = useState<Record<SectionId, boolean>>({
+    invoice: false,
+    receiver: false,
+    consignor: false,
+    vehicle: false,
+    lr: false,
+  })
 
   const loadRows = async () => {
     const { data } = await api.get('/modules/purchase/work-items')
@@ -101,27 +207,38 @@ export default function PurchaseInvoices() {
   const updateField = (field: keyof typeof initialForm, value: string) => {
     let nextValue = value
     if (field === 'Number of Vehicles Received') nextValue = onlyDigits(value)
-    if (field === 'Total Purchase Value') nextValue = amountDigits(value)
+    if (field === 'Total Purchase Value' || field === 'LR Invoice Value' || field === 'LR Freight') nextValue = amountDigits(value)
     setFormValues((current) => ({ ...current, [field]: nextValue }))
   }
 
-  const clearForm = () => setFormValues(initialForm)
+  const clearForm = () => {
+    setFormValues(initialForm)
+    setLrCopyFile(null)
+  }
 
   const exportCsv = () => {
     if (!filteredRows.length) {
       toast.error('No purchase invoice rows available to export')
       return
     }
-    const headers = ['Invoice Serial Number', 'Invoice Date', 'E-Way Bill Number', 'Vehicles', 'Total Purchase Value', 'Consigner Name', 'Workflow Status']
+    const headers = ['IRN', 'Ack Number', 'Ack Date', 'Invoice Serial Number', 'Invoice Date', 'E-Way Bill Number', 'Receiver Name', 'Receiver GSTIN', 'Consigner Name', 'Consigner GST Number', 'LR GC Number', 'LR Truck Number', 'Vehicles', 'Total Purchase Value', 'Workflow Status']
     const lines = filteredRows.map((row) => {
       const payload = parsePayload(row.payload)
       return [
+        payload.IRN ?? '',
+        payload['Ack Number'] ?? '',
+        payload['Ack Date'] ?? '',
         payload['Invoice Serial Number'] ?? row.ref,
         payload['Invoice Date'] ?? '',
         payload['E-Way Bill Number'] ?? '',
+        payload['Receiver Name'] ?? '',
+        payload['Receiver GSTIN'] ?? '',
+        payload['Consigner Name'] ?? '',
+        payload['Consigner GST Number'] ?? '',
+        payload['LR GC Number'] ?? '',
+        payload['LR Truck Number'] ?? '',
         payload['Number of Vehicles Received'] ?? '',
         row.amount ?? '',
-        payload['Consigner Name'] ?? '',
         row.status === 'Complete' ? 'Verified' : row.status,
       ]
         .map((value) => `"${String(value).replace(/"/g, '""')}"`)
@@ -145,8 +262,35 @@ export default function PurchaseInvoices() {
   }
 
   const submitInvoice = async () => {
-    if (!formValues['Invoice Serial Number'] || !formValues['Invoice Date'] || !formValues['E-Way Bill Number'] || !formValues['E-Way Bill Date']) {
-      toast.error('Fill the required invoice fields first')
+    const requiredFields: Array<keyof typeof initialForm> = [
+      'IRN',
+      'Ack Number',
+      'Ack Date',
+      'Invoice Serial Number',
+      'Invoice Date',
+      'E-Way Bill Number',
+      'E-Way Bill Date',
+      'Consigner GST Number',
+      'Consigner Name',
+      'Consigner Address',
+      'CIN Number',
+      'PAN',
+      'Receiver Name',
+      'Receiver Address',
+      'Receiver State',
+      'Receiver GSTIN',
+      'Place of Supply',
+      'Consignor Name',
+      'Consignor Address',
+      'Consignor State',
+      'Consignor GSTIN',
+      'Consignor PAN',
+      'Engine Number',
+      'Chassis Number',
+      'Model',
+    ]
+    if (requiredFields.some((field) => !formValues[field])) {
+      toast.error('Fill all mandatory invoice, receiver, consigner, and tractor fields first')
       return
     }
     if (!formValues['Number of Vehicles Received'] || Number(formValues['Number of Vehicles Received']) < 1) {
@@ -155,7 +299,15 @@ export default function PurchaseInvoices() {
     }
     setLoading(true)
     try {
-      await api.post('/modules/purchase/work-items', formValues)
+      const { data } = await api.post('/modules/purchase/work-items', formValues)
+      const lrDocument = data.documents?.find((document: { name: string }) => document.name.toLowerCase().includes('lr copy') || document.name.toLowerCase().includes('lr receipt'))
+      if (lrCopyFile && lrDocument?.id) {
+        await api.patch(`/documents/${lrDocument.id}/upload`, {
+          fileName: lrCopyFile.name,
+          contentBase64: await fileToBase64(lrCopyFile),
+          mimeType: lrCopyFile.type,
+        })
+      }
       clearForm()
       await loadRows()
       toast.success('Purchase invoice created')
@@ -186,6 +338,59 @@ export default function PurchaseInvoices() {
       return
     }
     navigate(`/pdi?vehicleId=${row.vehicle.id}`)
+  }
+
+  const toggleSection = (section: SectionId) => {
+    setCollapsedSections((current) => ({ ...current, [section]: !current[section] }))
+  }
+
+  const completedCount = (fields: readonly FieldConfig[]) => fields.filter((field) => Boolean(formValues[field.key])).length
+
+  const renderInput = (field: FieldConfig) => (
+    <label key={field.key} className="space-y-1">
+      <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">{field.label}</span>
+      <input
+        type={field.type ?? 'text'}
+        value={formValues[field.key]}
+        onChange={(event) => updateField(field.key, event.target.value)}
+        className="w-full border-b border-slate-300 px-1.5 py-1.5 text-sm focus:border-[#1b5e20] focus:outline-none"
+        placeholder={field.placeholder}
+      />
+    </label>
+  )
+
+  const renderSection = (
+    section: SectionId,
+    title: string,
+    icon: string,
+    fields: readonly FieldConfig[],
+    children: ReactNode,
+    className = '',
+  ) => {
+    const complete = completedCount(fields)
+    const total = fields.length
+    return (
+      <section className={`relative overflow-hidden rounded border border-slate-200 bg-white ${className}`}>
+        <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#1b5e20]" />
+        <button
+          type="button"
+          onClick={() => toggleSection(section)}
+          className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-slate-50"
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="material-symbols-outlined text-lg text-[#1b5e20]">{icon}</span>
+            <span className="truncate font-display text-[17px] font-semibold text-[#191d17]">{title}</span>
+          </span>
+          <span className="flex items-center gap-3">
+            <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${complete === total ? 'bg-[#1b5e20] text-white' : 'bg-slate-100 text-slate-600'}`}>
+              {complete}/{total}
+            </span>
+            <span className="material-symbols-outlined text-slate-500">{collapsedSections[section] ? 'expand_more' : 'expand_less'}</span>
+          </span>
+        </button>
+        {!collapsedSections[section] ? <div className="px-4 pb-4">{children}</div> : null}
+      </section>
+    )
   }
 
   return (
@@ -323,85 +528,107 @@ export default function PurchaseInvoices() {
             <h2 className="font-display text-[24px] font-semibold uppercase text-[#00450d]">New Purchase Entry</h2>
           </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <section className="relative overflow-hidden rounded border border-slate-200 bg-white p-6">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#1b5e20]" />
-              <div className="mb-6 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#1b5e20]">description</span>
-                <h3 className="font-display text-[20px] font-semibold text-[#191d17]">Invoice Details</h3>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 xl:grid-cols-2">
+            {renderSection(
+              'invoice',
+              'Invoice & E-Invoice Details',
+              'description',
+              [...invoiceFields, { key: 'Number of Vehicles Received', label: 'Vehicle Count' }, { key: 'Total Purchase Value', label: 'Total Invoice Value' }],
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+                {invoiceFields.map(renderInput)}
                 <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Invoice Serial No</span>
-                  <input value={formValues['Invoice Serial Number']} onChange={(event) => updateField('Invoice Serial Number', event.target.value)} className="w-full border-b border-slate-300 p-2 text-sm font-mono focus:border-[#1b5e20] focus:outline-none" placeholder="e.g. TAFE-2023-001" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Invoice Date</span>
-                  <input type="date" value={formValues['Invoice Date']} onChange={(event) => updateField('Invoice Date', event.target.value)} className="w-full border-b border-slate-300 p-2 text-sm focus:border-[#1b5e20] focus:outline-none" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">E-Way Bill No</span>
-                  <input value={formValues['E-Way Bill Number']} onChange={(event) => updateField('E-Way Bill Number', event.target.value)} className="w-full border-b border-slate-300 p-2 text-sm font-mono focus:border-[#1b5e20] focus:outline-none" placeholder="12 Digit E-Way No" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Bill Date</span>
-                  <input type="date" value={formValues['E-Way Bill Date']} onChange={(event) => updateField('E-Way Bill Date', event.target.value)} className="w-full border-b border-slate-300 p-2 text-sm focus:border-[#1b5e20] focus:outline-none" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Vehicle Count</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Vehicle Count</span>
                   <div className="flex items-center border-b border-slate-300">
-                    <button type="button" onClick={() => updateField('Number of Vehicles Received', String(Math.max(1, Number(formValues['Number of Vehicles Received'] || '1') - 1)))} className="p-2 text-[#00450d] hover:bg-slate-50">
+                    <button type="button" onClick={() => updateField('Number of Vehicles Received', String(Math.max(1, Number(formValues['Number of Vehicles Received'] || '1') - 1)))} className="p-1.5 text-[#00450d] hover:bg-slate-50">
                       <span className="material-symbols-outlined">remove</span>
                     </button>
                     <input value={formValues['Number of Vehicles Received']} onChange={(event) => updateField('Number of Vehicles Received', event.target.value)} className="w-full border-none text-center text-sm font-bold focus:outline-none" />
-                    <button type="button" onClick={() => updateField('Number of Vehicles Received', String(Number(formValues['Number of Vehicles Received'] || '0') + 1))} className="p-2 text-[#00450d] hover:bg-slate-50">
+                    <button type="button" onClick={() => updateField('Number of Vehicles Received', String(Number(formValues['Number of Vehicles Received'] || '0') + 1))} className="p-1.5 text-[#00450d] hover:bg-slate-50">
                       <span className="material-symbols-outlined">add</span>
                     </button>
                   </div>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Total Invoice Value</span>
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Total Invoice Value</span>
                   <div className="flex items-center border-b border-slate-300">
                     <span className="px-2 font-mono text-slate-400">Rs</span>
-                    <input value={formValues['Total Purchase Value']} onChange={(event) => updateField('Total Purchase Value', event.target.value)} className="w-full border-none p-2 text-right text-sm font-mono font-bold focus:outline-none" placeholder="0.00" />
+                    <input value={formValues['Total Purchase Value']} onChange={(event) => updateField('Total Purchase Value', event.target.value)} className="w-full border-none px-1.5 py-1.5 text-right text-sm font-mono font-bold focus:outline-none" placeholder="0.00" />
                   </div>
                 </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Engine Number</span>
-                  <input value={formValues['Engine Number']} onChange={(event) => updateField('Engine Number', event.target.value)} className="w-full border-b border-slate-300 p-2 text-sm font-mono focus:border-[#1b5e20] focus:outline-none" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Chassis Number</span>
-                  <input value={formValues['Chassis Number']} onChange={(event) => updateField('Chassis Number', event.target.value)} className="w-full border-b border-slate-300 p-2 text-sm font-mono focus:border-[#1b5e20] focus:outline-none" />
-                </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Model</span>
-                  <input value={formValues.Model} onChange={(event) => updateField('Model', event.target.value)} className="w-full border-b border-slate-300 p-2 text-sm focus:border-[#1b5e20] focus:outline-none" />
-                </label>
-              </div>
-            </section>
+              </div>,
+              'xl:col-span-2',
+            )}
 
-            <section className="relative overflow-hidden rounded border border-slate-200 bg-white p-6">
-              <div className="absolute left-0 top-0 bottom-0 w-1 bg-[#1b5e20]" />
-              <div className="mb-6 flex items-center gap-2">
-                <span className="material-symbols-outlined text-[#1b5e20]">local_shipping</span>
-                <h3 className="font-display text-[20px] font-semibold text-[#191d17]">Logistics Receipt</h3>
-              </div>
-              <div className="space-y-4">
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Consignment Note / LR Detail</span>
-                  <textarea value={formValues['Consignment Details']} onChange={(event) => updateField('Consignment Details', event.target.value)} className="w-full rounded border border-slate-200 p-3 text-sm focus:border-[#1b5e20] focus:outline-none" placeholder="Enter full consignment descriptions as per LR copy..." rows={4} />
+            {renderSection(
+              'receiver',
+              'Receiver Details (Billed To)',
+              'storefront',
+              receiverFields,
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {receiverFields.map(renderInput)}
+              </div>,
+            )}
+
+            {renderSection(
+              'consignor',
+              'Consigner Details',
+              'factory',
+              consignorFields,
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {consignorFields.map(renderInput)}
+              </div>,
+            )}
+
+            {renderSection(
+              'vehicle',
+              'Vehicle Details',
+              'agriculture',
+              [
+                { key: 'Model', label: 'Model' },
+                { key: 'Engine Number', label: 'Engine Number' },
+                { key: 'Chassis Number', label: 'Chassis Number' },
+              ],
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                {renderInput({ key: 'Model', label: 'Model' })}
+                {renderInput({ key: 'Engine Number', label: 'Engine Number' })}
+                {renderInput({ key: 'Chassis Number', label: 'Chassis Number' })}
+              </div>,
+            )}
+
+            {renderSection(
+              'lr',
+              'LR Copy & Logistics Receipt',
+              'local_shipping',
+              [...lrFields, { key: 'LR Copy File Name', label: 'Attach LR Copy' }, { key: 'Consignment Details', label: 'Consignment Details / Remarks' }],
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-5">
+                <label className="space-y-1 sm:col-span-2 lg:col-span-4 2xl:col-span-5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Attach LR Copy</span>
+                  <input
+                    type="file"
+                    accept="image/*,.pdf"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null
+                      setLrCopyFile(file)
+                      updateField('LR Copy File Name', file?.name ?? '')
+                    }}
+                    className="w-full rounded border border-dashed border-slate-300 bg-slate-50 p-2 text-sm"
+                  />
+                  {formValues['LR Copy File Name'] ? <p className="text-xs text-slate-500">Selected: {formValues['LR Copy File Name']}</p> : null}
                 </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Consigner Name</span>
-                  <input value={formValues['Consigner Name']} onChange={(event) => updateField('Consigner Name', event.target.value)} className="w-full rounded border border-slate-200 p-3 text-sm focus:border-[#1b5e20] focus:outline-none" placeholder="TAFE Manufacturing Unit - Chennai" />
+                {lrFields.map(renderInput)}
+                <label className="space-y-1 sm:col-span-2 lg:col-span-4 2xl:col-span-5">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500">Consignment Details / Remarks</span>
+                  <textarea
+                    value={formValues['Consignment Details']}
+                    onChange={(event) => updateField('Consignment Details', event.target.value)}
+                    className="w-full rounded border border-slate-200 p-2 text-sm focus:border-[#1b5e20] focus:outline-none"
+                    placeholder="Enter full LR remarks, delivery notes, or multi-tractor line details from the LR copy."
+                    rows={2}
+                  />
                 </label>
-                <label className="space-y-1">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Consigner Invoice Number</span>
-                  <input value={formValues['Consigner Invoice Number']} onChange={(event) => updateField('Consigner Invoice Number', event.target.value)} className="w-full rounded border border-slate-200 p-3 text-sm font-mono focus:border-[#1b5e20] focus:outline-none" placeholder="Vendor reference number" />
-                </label>
-              </div>
-            </section>
+              </div>,
+              'xl:col-span-2',
+            )}
           </div>
 
           <div className="mt-4 flex items-center gap-4 rounded border border-[#00450d]/20 bg-[#acf4a4] p-4 text-sm text-[#002203]">

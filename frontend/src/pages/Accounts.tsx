@@ -26,19 +26,37 @@ type LocalUpload = {
   previewUrl: string
 }
 
+type Employee = {
+  id: string
+  name: string
+  role: string
+}
+
 function parsePayload(payload?: string | null) {
   try { return payload ? JSON.parse(payload) : {} } catch { return {} }
 }
 
 const initial = {
-  'Total Deal Value': '',
-  'Booking Amount': '',
-  'Loan Disbursal': '',
-  'Cash Receipt': '',
-  'Discount Approval': '',
-  'Final Balance': '',
-  'Deal Closure Date': '',
+  'Deal Value': '',
+  'Closed Value': '',
+  Balance: '',
+  'Account Details': '',
+  'Handled By': '',
 }
+
+const initialAts = {
+  'ATS Status': 'Called',
+  'Amount Paid': '',
+  'Expected Closure Date': '',
+  'Communication Mode': 'Phone Call',
+  Remarks: '',
+}
+
+const fallbackEmployees: Employee[] = [
+  { id: 'owner', name: 'Owner User', role: 'owner' },
+  { id: 'admin', name: 'Admin User', role: 'admin' },
+  { id: 'accounts', name: 'Accounts User', role: 'accounts' },
+]
 
 export default function Accounts() {
   const navigate = useNavigate()
@@ -46,18 +64,23 @@ export default function Accounts() {
   const requestedVehicleId = searchParams.get('vehicleId') ?? ''
   const [rows, setRows] = useState<Row[]>([])
   const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [employees, setEmployees] = useState<Employee[]>(fallbackEmployees)
   const [selectedVehicleId, setSelectedVehicleId] = useState('')
   const [values, setValues] = useState(initial)
-  const [paymentMode, setPaymentMode] = useState('Cash')
-  const [paymentRef, setPaymentRef] = useState('')
-  const [paymentProof, setPaymentProof] = useState<LocalUpload | null>(null)
+  const [atsValues, setAtsValues] = useState(initialAts)
+  const [atsRows, setAtsRows] = useState<Row[]>([])
   const [loading, setLoading] = useState(false)
+  const [atsLoading, setAtsLoading] = useState(false)
   const [editUnlocked, setEditUnlocked] = useState(false)
 
   const load = async () => {
-    const [rowRes, vehicleRes] = await Promise.all([api.get('/modules/accounts/work-items'), api.get('/vehicles')])
-    setRows(rowRes.data)
-    const eligible = vehicleRes.data.filter((vehicle: Vehicle) => ['RTO Verification In Progress', 'RTO Filed', 'Financially Closed', 'Closed'].includes(vehicle.status) || vehicle.id === requestedVehicleId)
+    const [rowRes, vehicleRes, userRes, atsRes] = await Promise.allSettled([api.get('/modules/accounts/work-items'), api.get('/vehicles'), api.get('/users'), api.get('/modules/ats/work-items')])
+    const rowData = rowRes.status === 'fulfilled' ? rowRes.value.data : []
+    const vehicleData = vehicleRes.status === 'fulfilled' ? vehicleRes.value.data : []
+    setRows(rowData)
+    if (atsRes.status === 'fulfilled') setAtsRows(atsRes.value.data)
+    if (userRes.status === 'fulfilled') setEmployees(userRes.value.data.filter((user: Employee) => ['owner', 'admin', 'accounts', 'sales'].includes(user.role)))
+    const eligible = vehicleData.filter((vehicle: Vehicle) => ['Insured', 'Financially Closed', 'Closed'].includes(vehicle.status) || vehicle.id === requestedVehicleId)
     setVehicles(eligible)
     if (requestedVehicleId && eligible.some((vehicle: Vehicle) => vehicle.id === requestedVehicleId)) {
       setSelectedVehicleId(requestedVehicleId)
@@ -73,108 +96,47 @@ export default function Accounts() {
   const currentPayload = useMemo(() => parsePayload(currentRow?.payload), [currentRow])
   const isFinalized = Boolean(currentRow)
   const isEditing = !isFinalized || editUnlocked
+  const selectedAtsRows = useMemo(() => atsRows.filter((row) => row.vehicle?.id === selectedVehicleId), [atsRows, selectedVehicleId])
 
-  const computedFinalBalance = useMemo(() => {
-    const totalDealValue = Number(values['Total Deal Value'] || 0)
-    const booking = Number(values['Booking Amount'] || 0)
-    const loan = Number(values['Loan Disbursal'] || 0)
-    const cash = Number(values['Cash Receipt'] || 0)
-    const discount = Number(values['Discount Approval'] || 0)
-    return Math.max(0, totalDealValue - booking - loan - cash - discount)
+  const computedBalance = useMemo(() => {
+    const dealValue = Number(values['Deal Value'] || 0)
+    const closedValue = Number(values['Closed Value'] || 0)
+    return Math.max(0, dealValue - closedValue)
   }, [values])
 
   useEffect(() => {
-    setValues((current) => ({ ...current, 'Final Balance': String(computedFinalBalance) }))
-  }, [computedFinalBalance])
+    setValues((current) => ({ ...current, Balance: String(computedBalance) }))
+  }, [computedBalance])
 
   useEffect(() => {
     setEditUnlocked(false)
     if (!currentRow) {
-      setValues(initial)
-      setPaymentMode('Cash')
-      setPaymentRef('')
-      setPaymentProof((current) => {
-        if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
-        return null
-      })
+      setValues({ ...initial, 'Handled By': employees[0]?.name ?? '' })
       return
     }
     setValues({
-      'Total Deal Value': String(currentPayload['Total Deal Value'] ?? ''),
-      'Booking Amount': String(currentPayload['Booking Amount'] ?? ''),
-      'Loan Disbursal': String(currentPayload['Loan Disbursal'] ?? ''),
-      'Cash Receipt': String(currentPayload['Cash Receipt'] ?? ''),
-      'Discount Approval': String(currentPayload['Discount Approval'] ?? ''),
-      'Final Balance': String(currentPayload['Final Balance'] ?? ''),
-      'Deal Closure Date': String(currentPayload['Deal Closure Date'] ?? ''),
+      'Deal Value': String(currentPayload['Deal Value'] ?? currentPayload['Total Deal Value'] ?? ''),
+      'Closed Value': String(currentPayload['Closed Value'] ?? ''),
+      Balance: String(currentPayload.Balance ?? currentPayload['Final Balance'] ?? ''),
+      'Account Details': String(currentPayload['Account Details'] ?? ''),
+      'Handled By': String(currentPayload['Handled By'] ?? employees[0]?.name ?? ''),
     })
-    setPaymentMode(String(currentPayload['Payment Mode'] ?? 'Cash'))
-    setPaymentRef(String(currentPayload['Bank Reference'] ?? ''))
-    const savedProofName = String(currentPayload['Payment Proof'] ?? '')
-    setPaymentProof((current) => {
-      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
-      return savedProofName ? { fileName: savedProofName, previewUrl: '' } : null
-    })
-  }, [currentRow, currentPayload, selectedVehicleId])
-
-  useEffect(() => {
-    if (paymentMode === 'Cash') {
-      setPaymentRef('')
-      setPaymentProof((current) => {
-        if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
-        return current?.fileName && !current.previewUrl ? current : null
-      })
-    }
-  }, [paymentMode])
+  }, [currentRow, currentPayload, selectedVehicleId, employees])
 
   const totals = rows.reduce((acc, row) => {
     const payload = parsePayload(row.payload)
-    const collected = Number(payload['Booking Amount'] || 0) + Number(payload['Loan Disbursal'] || 0) + Number(payload['Cash Receipt'] || 0)
-    const finalBalance = Number(payload['Final Balance'] || 0)
-    acc.deal += collected + finalBalance
-    acc.collected += collected
-    acc.pending += finalBalance
+    const dealValue = Number(payload['Deal Value'] || payload['Total Deal Value'] || 0)
+    const closedValue = Number(payload['Closed Value'] || 0)
+    const balance = Number(payload.Balance || payload['Final Balance'] || 0)
+    acc.deal += dealValue
+    acc.collected += closedValue
+    acc.pending += balance
     return acc
   }, { deal: 0, collected: 0, pending: 0 })
 
-  const setPaymentProofUpload = (file?: File) => {
-    if (!file) return
-    setPaymentProof((current) => {
-      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
-      return {
-        fileName: file.name,
-        previewUrl: URL.createObjectURL(file),
-      }
-    })
-    toast.success(`${file.name} attached`)
-  }
-
-  const clearPaymentProof = () => {
-    setPaymentProof((current) => {
-      if (current?.previewUrl) URL.revokeObjectURL(current.previewUrl)
-      return null
-    })
-  }
-
-  const viewPaymentProof = () => {
-    if (!paymentProof?.previewUrl) {
-      toast('Saved payment proof name is available, but only files attached in the current edit session can be previewed here.')
-      return
-    }
-    window.open(paymentProof.previewUrl, '_blank', 'noopener,noreferrer')
-  }
-
-  const paymentDocumentLabel = useMemo(() => {
-    if (paymentMode === 'Cheque') return 'Cheque Copy'
-    if (paymentMode === 'DD') return 'Demand Draft Copy'
-    if (paymentMode === 'Loan Disbursal') return 'Loan Document'
-    if (paymentMode === 'Bank Transfer') return 'Bank Transfer Proof'
-    return 'Payment Proof'
-  }, [paymentMode])
-
   const submit = async () => {
     if (!selectedVehicle) return toast.error('Select a deal vehicle first')
-    if (paymentMode !== 'Cash' && !paymentProof) return toast.error(`Upload the ${paymentDocumentLabel.toLowerCase()} before finalizing settlement`)
+    if (!values['Deal Value'] || !values['Closed Value'] || !values['Handled By']) return toast.error('Complete deal value, closed value, and handled by')
     setLoading(true)
     try {
       const nextPayload = {
@@ -182,9 +144,8 @@ export default function Accounts() {
         'Vehicle Code': selectedVehicle.code,
         'Customer Name': selectedVehicle.customer?.name ?? '',
         'Customer Ledger': `${selectedVehicle.code}-LEDGER`,
-        'Payment Mode': paymentMode,
-        'Bank Reference': paymentRef,
-        'Payment Proof': paymentProof?.fileName ?? '',
+        'Total Deal Value': values['Deal Value'],
+        'Final Balance': values.Balance,
       }
       if (currentRow?.id) {
         await api.patch(`/work-items/${currentRow.id}/payload`, nextPayload)
@@ -198,6 +159,34 @@ export default function Accounts() {
       toast.error(error.response?.data?.message ?? 'Could not save accounts deal')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const addAtsFollowUp = async () => {
+    if (!selectedVehicle) return toast.error('Select a deal vehicle first')
+    if (!currentRow) return toast.error('Finalize account settlement before adding ATS')
+    if (!atsValues['Amount Paid'] || !atsValues['Expected Closure Date']) return toast.error('Enter amount paid and expected closure date')
+    setAtsLoading(true)
+    try {
+      await api.post('/modules/ats/work-items', {
+        'Vehicle Code': selectedVehicle.code,
+        'Deal ID': currentRow.id,
+        'Customer Ledger': `${selectedVehicle.code}-LEDGER`,
+        'Customer Name': selectedVehicle.customer?.name ?? '',
+        'Customer Mobile': selectedVehicle.customer?.mobile ?? '',
+        'Vehicle Model': selectedVehicle.model,
+        'Balance': values.Balance,
+        ...atsValues,
+        'Net Settlement': values.Balance,
+        'Due Date': atsValues['Expected Closure Date'],
+      })
+      setAtsValues(initialAts)
+      await load()
+      toast.success('ATS follow-up row added')
+    } catch (error: any) {
+      toast.error(error.response?.data?.message ?? 'Could not add ATS follow-up')
+    } finally {
+      setAtsLoading(false)
     }
   }
 
@@ -242,7 +231,7 @@ export default function Accounts() {
                           <div className="text-sm">{row.vehicle?.model ?? '-'}</div>
                           <div className="font-mono text-xs text-slate-500">{row.vehicle?.code ?? '-'}</div>
                         </td>
-                        <td className="px-4 py-3 text-right font-mono font-bold text-red-600">Rs {Number(payload['Final Balance'] || 0).toLocaleString('en-IN')}</td>
+                        <td className="px-4 py-3 text-right font-mono font-bold text-red-600">Rs {Number(payload.Balance || payload['Final Balance'] || 0).toLocaleString('en-IN')}</td>
                       </tr>
                     )
                   })}
@@ -288,56 +277,41 @@ export default function Accounts() {
               </div>
 
               <div className="rounded border border-slate-200 bg-slate-50 p-4 space-y-3">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Record New Payment</h3>
+                <h3 className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Account Details</h3>
                 <label className="block space-y-1">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">Payment Mode</span>
-                  <select value={paymentMode} disabled={!isEditing} onChange={(e) => setPaymentMode(e.target.value)} className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20] disabled:bg-slate-50 disabled:text-slate-500">
-                    <option>Cash</option>
-                    <option>Bank Transfer</option>
-                    <option>Cheque</option>
-                    <option>DD</option>
-                    <option>Loan Disbursal</option>
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500">Handled By</span>
+                  <select
+                    value={values['Handled By']}
+                    disabled={!isEditing}
+                    onChange={(event) => setValues((current) => ({ ...current, 'Handled By': event.target.value }))}
+                    className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20] disabled:bg-slate-50 disabled:text-slate-500"
+                  >
+                    {employees.map((employee) => (
+                      <option key={employee.id} value={employee.name}>{employee.name} - {employee.role}</option>
+                    ))}
                   </select>
                 </label>
                 <label className="block space-y-1">
-                  <span className="text-[10px] uppercase tracking-widest text-slate-500">Transaction Reference</span>
-                  <input value={paymentRef} readOnly={!isEditing} onChange={(e) => setPaymentRef(e.target.value)} className="h-11 w-full rounded border border-slate-200 px-3 font-mono text-sm outline-none focus:border-[#1b5e20] read-only:bg-slate-50 read-only:text-slate-500" />
+                  <span className="text-[10px] uppercase tracking-widest text-slate-500">Account Details</span>
+                  <textarea
+                    value={values['Account Details']}
+                    readOnly={!isEditing}
+                    onChange={(event) => setValues((current) => ({ ...current, 'Account Details': event.target.value }))}
+                    className="h-32 w-full rounded border border-slate-200 px-3 py-3 text-sm outline-none focus:border-[#1b5e20] read-only:bg-slate-50 read-only:text-slate-500"
+                    placeholder="Bank, ledger, receipt, or settlement notes..."
+                  />
                 </label>
-                {paymentMode !== 'Cash' ? (
-                  <div className="rounded border border-slate-200 bg-white p-3 space-y-3">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{paymentDocumentLabel}</p>
-                    <div className="text-sm text-slate-600">{paymentProof?.fileName ?? `Upload ${paymentDocumentLabel.toLowerCase()}`}</div>
-                    {isEditing ? (
-                      <div className="flex flex-wrap gap-2">
-                        <label className="cursor-pointer rounded border border-[#1b5e20] px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-[#1b5e20]">
-                          <input type="file" accept=".pdf,image/*" className="hidden" onChange={(event) => setPaymentProofUpload(event.target.files?.[0])} />
-                          {paymentProof ? 'Re-upload' : 'Upload Document'}
-                        </label>
-                        {paymentProof ? (
-                          <>
-                            <button type="button" onClick={viewPaymentProof} className="rounded border border-slate-300 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-700">View</button>
-                            <button type="button" onClick={clearPaymentProof} className="rounded border border-red-300 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-red-700">Remove</button>
-                          </>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Payment proof locked after submit
-                      </div>
-                    )}
-                  </div>
-                ) : null}
               </div>
 
               <div className="space-y-3">
-                {Object.keys(values).map((field) => (
+                {(['Deal Value', 'Closed Value', 'Balance'] as const).map((field) => (
                   <label key={field} className="block space-y-1">
                     <span className="text-[10px] uppercase tracking-widest text-slate-500">{field}</span>
                     <input
-                      type={field.includes('Date') ? 'date' : 'text'}
-                      value={values[field as keyof typeof values]}
+                      type="text"
+                      value={values[field]}
                       onChange={(e) => setValues((current) => ({ ...current, [field]: field.includes('Date') ? e.target.value : e.target.value.replace(/[^\d.]/g, '') }))}
-                      readOnly={!isEditing || field === 'Final Balance'}
+                      readOnly={!isEditing || field === 'Balance'}
                       className="h-11 w-full rounded border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20] read-only:bg-slate-100 read-only:text-slate-600"
                     />
                   </label>
@@ -346,12 +320,111 @@ export default function Accounts() {
             </div>
           </div>
         </section>
+
+        {Number(values.Balance || 0) > 0 ? (
+          <section className="rounded-lg border border-amber-300 bg-amber-50 p-6 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700">Advance Tracking Sheet</p>
+                <h2 className="mt-1 font-display text-[24px] font-semibold text-[#00450d]">ATS opened for pending balance</h2>
+                <p className="mt-1 text-sm text-slate-600">Balance is Rs {Number(values.Balance || 0).toLocaleString('en-IN')}. Track this advance before final closure.</p>
+              </div>
+              <button onClick={() => navigate(`/ats${selectedVehicleId ? `?vehicleId=${selectedVehicleId}` : ''}`)} className="rounded bg-[#1b5e20] px-6 py-3 text-[11px] font-bold uppercase tracking-wider text-white">
+                Open ATS
+              </button>
+            </div>
+            <div className="mt-5 grid gap-3 md:grid-cols-4">
+              {[
+                ['Vehicle', selectedVehicle?.code ?? '-'],
+                ['Customer', selectedVehicle?.customer?.name ?? '-'],
+                ['Handled By', values['Handled By'] || '-'],
+                ['Balance', `Rs ${Number(values.Balance || 0).toLocaleString('en-IN')}`],
+              ].map(([label, value]) => (
+                <div key={label} className="border border-amber-200 bg-white px-4 py-3">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">{label}</p>
+                  <p className="mt-1 font-semibold text-slate-900">{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="mt-5 border border-amber-200 bg-white p-4">
+              <h3 className="font-display text-[18px] font-semibold text-[#00450d]">Add ATS Follow-up</h3>
+              <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-5">
+                <label className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">ATS Status</span>
+                  <select value={atsValues['ATS Status']} onChange={(event) => setAtsValues((current) => ({ ...current, 'ATS Status': event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]">
+                    <option>Called</option>
+                    <option>Promised</option>
+                    <option>Part Paid</option>
+                    <option>Closed</option>
+                    <option>Not Responding</option>
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">How Much Paid</span>
+                  <input value={atsValues['Amount Paid']} onChange={(event) => setAtsValues((current) => ({ ...current, 'Amount Paid': event.target.value.replace(/[^\d.]/g, '') }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">When It Will Close</span>
+                  <input type="date" value={atsValues['Expected Closure Date']} onChange={(event) => setAtsValues((current) => ({ ...current, 'Expected Closure Date': event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
+                </label>
+                <label className="space-y-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Way of Communication</span>
+                  <select value={atsValues['Communication Mode']} onChange={(event) => setAtsValues((current) => ({ ...current, 'Communication Mode': event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]">
+                    <option>Phone Call</option>
+                    <option>WhatsApp</option>
+                    <option>SMS</option>
+                    <option>In Person</option>
+                    <option>Email</option>
+                  </select>
+                </label>
+                <label className="space-y-1 md:col-span-2 xl:col-span-1">
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Remarks</span>
+                  <input value={atsValues.Remarks} onChange={(event) => setAtsValues((current) => ({ ...current, Remarks: event.target.value }))} className="h-10 w-full border border-slate-200 px-3 text-sm outline-none focus:border-[#1b5e20]" />
+                </label>
+              </div>
+              <div className="mt-4 flex justify-end">
+                <button onClick={addAtsFollowUp} disabled={atsLoading || !currentRow} className="rounded bg-[#1b5e20] px-6 py-2 text-[11px] font-bold uppercase tracking-wider text-white disabled:opacity-60">
+                  {atsLoading ? 'Adding...' : 'Add ATS Row'}
+                </button>
+              </div>
+              {selectedAtsRows.length ? (
+                <div className="mt-5 overflow-hidden border border-slate-200">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-[#1b5e20] text-[10px] uppercase tracking-widest text-white">
+                      <tr>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-3 py-2 text-right">Paid</th>
+                        <th className="px-3 py-2">Close Date</th>
+                        <th className="px-3 py-2">Communication</th>
+                        <th className="px-3 py-2">Remarks</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedAtsRows.map((row, index) => {
+                        const payload = parsePayload(row.payload)
+                        return (
+                          <tr key={row.id} className={index % 2 ? 'bg-slate-50' : 'bg-white'}>
+                            <td className="px-3 py-2 font-semibold">{payload['ATS Status'] || row.status}</td>
+                            <td className="px-3 py-2 text-right font-mono">Rs {Number(payload['Amount Paid'] || 0).toLocaleString('en-IN')}</td>
+                            <td className="px-3 py-2">{payload['Expected Closure Date'] || row.due || '-'}</td>
+                            <td className="px-3 py-2">{payload['Communication Mode'] || '-'}</td>
+                            <td className="px-3 py-2">{payload.Remarks || '-'}</td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </div>
+          </section>
+        ) : null}
       </div>
 
       <div className="fixed bottom-0 left-[260px] right-0 z-30 flex items-center justify-between border-t border-slate-200 bg-white px-8 py-4">
         <div className="text-xs text-slate-400">{isFinalized ? 'Accounts settlement is locked after submit until Edit Settlement is pressed.' : 'All changes are saved into live DB records.'}</div>
         <div className="flex gap-3">
-          <button onClick={() => navigate('/rto')} className="rounded border border-slate-300 px-6 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700">Back</button>
+          <button onClick={() => navigate('/insurance')} className="rounded border border-slate-300 px-6 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700">Back</button>
           <button onClick={() => navigate('/ats')} disabled={!isFinalized} className="rounded border border-slate-300 px-6 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-700 disabled:cursor-not-allowed disabled:text-slate-400">Next Step</button>
           <button onClick={submit} disabled={loading || !isEditing} className="rounded bg-[#1b5e20] px-10 py-2 text-[11px] font-bold uppercase tracking-wider text-white disabled:opacity-60">
             {loading ? 'Saving...' : isFinalized && !isEditing ? 'Settlement Locked' : 'Finalize Settlement'}
